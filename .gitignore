@@ -1,0 +1,10 @@
+.gitignore
+.env
+
+/downloads
+/logs
+/config.toml
+
+.vscode
+/build
+/test*.sh

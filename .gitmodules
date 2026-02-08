@@ -1,0 +1,4 @@
+[submodule "bashlet"]
+	path = bashlet
+	url = git@github.com:uglyboy-tl/bashlet.git
+	fetch = +refs/heads/*:refs/remotes/origin/*
