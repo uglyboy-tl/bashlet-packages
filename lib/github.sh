@@ -7,7 +7,7 @@
 
 import std/fs
 import std/system
-import web/requests
+import ext/requests
 
 declare -g OS ARCH
 

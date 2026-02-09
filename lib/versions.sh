@@ -40,6 +40,6 @@ get_current_version() { config.array.get "packages" "$1" "current_version";}
 get_latest_version() { config.array.get "packages" "$1" "latest_version"; }
 get_download_url() { config.array.get "packages" "$1" "download_url";}
 is_package_downloaded() { [[ $(config.array.get "packages" "$1" "downloaded") == "true" ]];}
-has_new_version() { local cur=$(get_current_version "$1"); local latest=$(get_latest_version "$package"); [[ -z "$cur" || "$cur" != "$latest" ]]; }
+#has_new_version() { local cur=$(get_current_version "$1"); local latest=$(get_latest_version "$package"); [[ -z "$cur" || "$cur" != "$latest" ]]; }
 get_package_property() { echo "$(config.array.get "packages" "$1" "$2")"; }
 #_save_versions_to_file() { local -a _fk=(); local -A _fa=([packages]="current_version latest_version download_url downloaded"); config.save "$VERSIONS_FILE" _fk _fa; }

@@ -2,7 +2,7 @@
 
 import std/fs
 import std/system
-import web/requests
+import ext/requests
 
 # 下载文件（支持代理前缀，自动选择工具）
 download_file() {
