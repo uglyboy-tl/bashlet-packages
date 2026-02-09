@@ -6,20 +6,15 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 source "$PROJECT_ROOT/lib/std/import.sh"
 
+import std/init
 import core/log
 import core/args
 import core/config
-import std/utils
 import github
 import versions
 import download
 
-get_package_property() {
-    local -r package="$1"
-    local -r property="$2"
 
-    echo "$(config.array.get "packages" "$package" "$property")"
-}
 # Command: list - 列出已下载的包和更新状态
 cmd_list() {
     args.init
@@ -401,7 +396,6 @@ cmd_edit() {
 
 # Main entry point
 main() {
-    .env || true
     args.name "$SCRIPT_NAME"
     args.init 命令行程序下载管理器
 
