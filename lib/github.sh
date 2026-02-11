@@ -15,7 +15,7 @@ system.os.init
 system.arch.init
 requests.init 2>/dev/null || { log.error "Failed to initialize requests module" && exit 1; }
 
-[[ -n "${GITHUB_TOKEN:-}" ]] && requests.default_headers "Authorization" "token $GITHUB_TOKEN"
+[[ -n "${GITHUB_TOKEN:-}" ]] && requests.headers.append "Authorization" "token $GITHUB_TOKEN"
 
 _get_arch_regex() {
 	declare -g ARCH
