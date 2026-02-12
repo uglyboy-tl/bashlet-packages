@@ -1,131 +1,104 @@
 #!/usr/bin/env bash
 
 import std/console
+import std/fs
 import core/log
 import core/args
 import core/config
 import utils
 
 extract_file() {
-	local filename="$1"
-	local extract_dir="$2"
-
+	local filename="$1" extract_dir="$2"
 	local file_path="$SETTINGS_DOWNLOAD_DIR/$filename"
-	mkdir -p "$extract_dir"
 
-	# 检查是否是无后缀的二进制文件（直接提供的可执行文件）
-	if [[ ! "$filename" =~ \. ]]; then
-		# 无后缀文件，直接复制到解压目录
+	case "$filename" in
+	*.zip) unzip -q "$file_path" -d "$extract_dir" ;;
+	*.tar.gz | *.tgz) tar -xzf "$file_path" -C "$extract_dir" ;;
+	*.tar.xz | *.txz) tar -xJf "$file_path" -C "$extract_dir" ;;
+	*.tar.bz2 | *.tbz2) tar -xjf "$file_path" -C "$extract_dir" ;;
+	*)
 		cp "$file_path" "$extract_dir/"
 		chmod +x "$extract_dir/$(basename "$filename")"
-		return 0
-	fi
+		;;
+	esac
+}
 
-	# 根据文件扩展名选择解压方式
-	if [[ "$filename" == *.zip ]]; then
-		unzip -q "$file_path" -d "$extract_dir"
-	elif [[ "$filename" == *.tar.gz ]] || [[ "$filename" == *.tgz ]]; then
-		tar -xzf "$file_path" -C "$extract_dir"
-	elif [[ "$filename" == *.tar.xz ]] || [[ "$filename" == *.txz ]]; then
-		tar -xJf "$file_path" -C "$extract_dir"
-	elif [[ "$filename" == *.tar.bz2 ]] || [[ "$filename" == *.tbz2 ]]; then
-		tar -xjf "$file_path" -C "$extract_dir"
+# 确定安装目录
+_get_install_dir() {
+	local system_bin="/usr/local/bin" user_bin="$HOME/.local/bin"
+	if [[ -w "$system_bin" ]]; then
+		echo "$system_bin"
+		log.debug "有系统目录写入权限，使用系统目录"
 	else
-		return 1
+		echo "$user_bin"
+		log.debug "无系统目录写入权限，使用用户目录"
 	fi
 }
 
-# 安装单个包的内部函数
+# 安装单个包的核心逻辑
 _do_install_package() {
 	local package="$1"
-	local show_header="${2:-true}"
 
 	current_version=$(get_package_property "$package" "current_version")
-	if [[ -z "$current_version" ]]; then
-		item.format 1 "$package: 未下载，请先运行 upgrade"
-		return 1
-	fi
+	[[ -z "$current_version" ]] && item.format 1 "$package: 未下载，请先运行 upgrade" && return 1
 
 	file_extension=$(get_package_property "$package" "file_extension")
 	binary_name=$(get_package_property "$package" "binary_name")
 
-	if [[ "$show_header" == "true" ]]; then
-		item.format 1 "安装 $package (版本: $current_version)..."
-	fi
+	item.format 1 "安装 $package (版本: $current_version)..."
 
-	# 构建文件名（无后缀时直接用包名-版本）
-	if [[ -n "$file_extension" ]]; then
-		filename="${package}-${current_version}.${file_extension}"
-	else
-		filename="${package}-${current_version}"
-	fi
+	# 构建文件名
+	filename="${package}-${current_version}${file_extension:+.${file_extension}}"
 	archive_file="$SETTINGS_DOWNLOAD_DIR/$filename"
-
-	if [[ ! -f "$archive_file" ]]; then
-		item.format 1 "$package: 文件不存在: $archive_file"
-		return 1
-	fi
+	[[ ! -f "$archive_file" ]] && item.format 1 "$package: 文件不存在: $archive_file" && return 1
 
 	# 确定安装目录
-	system_bin="/usr/local/bin"
-	user_bin="$HOME/.local/bin"
-
-	if [[ -w "$system_bin" ]]; then
-		install_dir="$system_bin"
-		item.format 1 "[检测] 有系统目录写入权限，使用系统目录"
-	else
-		install_dir="$user_bin"
-		item.format 1 "[检测] 无系统目录写入权限，使用用户目录"
-	fi
+	install_dir=$(_get_install_dir)
 	mkdir -p "$install_dir"
 
-	# 无后缀名二进制文件，直接安装
-	if [[ -z "$file_extension" ]]; then
-		local target_file="$install_dir/$binary_name"
-		item.format 1 "[安装] $binary_name"
-		cp "$archive_file" "$target_file"
-		chmod +x "$target_file"
-		item.format 1 "[完成] 安装成功"
-		item.format 1 "[路径] $install_dir 已添加到 PATH"
-		return 0
-	fi
+	local work_dir="$(fs.mktemp "-d")" || return 1
+	trap 'rm -rf "${work_dir:-}"' RETURN
 
-	extract_dir="$SETTINGS_DOWNLOAD_DIR/${package}-${current_version}"
-	rm -rf "$extract_dir"
 	item.format 1 "[解压] $filename"
-	if ! extract_file "$filename" "$extract_dir"; then
+	if ! extract_file "$filename" "$work_dir"; then
 		item.format 1 "$package: 解压失败"
-		rm -rf "$extract_dir"
+		return 1
+	fi
+	binary_files=()
+	while IFS= read -r -d '' file; do
+		binary_files+=("$file")
+	done < <(find "$work_dir" -type f \( -executable -o -perm /111 \) ! -name "*.*" -print0 2>/dev/null)
+
+	binary_count=${#binary_files[@]}
+	if [[ "$binary_count" -eq 0 ]]; then
+		log.warn "$package: 未找到可执行文件"
 		return 1
 	fi
 
-	local binary_files=()
-	while IFS= read -r -d '' binary_file; do
-		binary_files+=("$binary_file")
-	done < <(find "$extract_dir" -type f -executable -print0 2>/dev/null)
+	installed_count=0
+	failed_packages=()
+	for binary_file in "${binary_files[@]}"; do
+		if [[ $binary_count -eq 1 ]]; then
+			target_file="$install_dir/${binary_name:-$(basename "$binary_file")}"
+		else
+			target_file="$install_dir/$(basename "$binary_file")"
+		fi
+		item.format 1 "[安装] 到 $target_file"
+		cp "$binary_file" "$target_file" 2>/dev/null || {
+			file_name="$(basename "$binary_file")"
+			log.warn "$file_name: 复制失败"
+			failed_packages+=("$file_name")
+			continue
+		}
+		((installed_count++))
+	done
 
-	if [[ ${#binary_files[@]} -eq 0 ]]; then
-		while IFS= read -r -d '' binary_file; do
-			binary_files+=("$binary_file")
-		done < <(find "$extract_dir" -type f -perm /111 -print0 2>/dev/null)
-	fi
-
-	if [[ ${#binary_files[@]} -gt 0 ]]; then
-		local installed_count=0
-		for binary_file in "${binary_files[@]}"; do
-			local target_file="$install_dir/$(basename "$binary_file")"
-			item.format 1 "[安装] 到 $target_file"
-			cp "$binary_file" "$target_file"
-			chmod +x "$target_file"
-			((installed_count++)) || true
-		done
-		rm -rf "$extract_dir"
+	if [[ ${#failed_packages[@]} -eq 0 ]]; then
 		item.format 1 "[完成] 安装成功 ($installed_count 个文件)"
 		item.format 1 "[路径] $install_dir 已添加到 PATH"
 		return 0
 	else
-		item.format 1 "$package: 未找到可执行文件"
-		rm -rf "$extract_dir"
+		item.format 1 "[失败] 安装 ${failed_packages[@]} 时出现错误"
 		return 1
 	fi
 }
@@ -140,18 +113,17 @@ cmd_install() {
 
 	title.format "安装包"
 
-	local success_count=0
-	local fail_count=0
+	local success_count=0 fail_count=0
 
 	for package in "${target_packages[@]}"; do
 		if ! printf '%s\n' $(config.array.items "packages") | grep -q "^${package}$"; then
 			log.error "Unknown package: $package"
-			log.error "Available packages: ${PACKAGES[*]}"
+			log.error "Available packages: $(config.array.items "packages")"
 			exit 1
-		elif _do_install_package "$package" "true"; then
-			((success_count++)) || true
+		elif _do_install_package "$package"; then
+			((success_count++))
 		else
-			((fail_count++)) || true
+			((fail_count++))
 		fi
 		console.stdout ""
 	done
