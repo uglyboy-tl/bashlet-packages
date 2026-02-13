@@ -25,13 +25,12 @@ download_file() {
 
 # 备份文件到 downloads/backups 目录（使用移动而非复制）
 backup_file() {
-	local package="$1" version="$2" filename="$3"
+	local package="$1" version="$2" filename="$3" ext="${4:-${3##*.}}"
 	local source_file="$SETTINGS_DOWNLOAD_DIR/$filename"
 	local backup_dir="$SETTINGS_DOWNLOAD_DIR/backups"
 	local timestamp=$(date +%Y.%m.%d)
 
 	# 使用参数扩展获取文件后缀（如果有的话）
-	local ext="${filename##*.}"
 	local backup_file="${backup_dir}/${package}-${version}-${timestamp}${ext:+.${ext}}"
 
 	mkdir -p "$backup_dir"
@@ -100,7 +99,7 @@ cmd_upgrade() {
 		# 备份旧版本
 		if [[ -n "$current_version" ]]; then
 			local old_file=$(build_filename "$package" "$current_version" "$file_extension")
-			[[ -f "$SETTINGS_DOWNLOAD_DIR/$old_file" ]] && backup_file "$package" "$current_version" "$old_file" >/dev/null
+			[[ -f "$SETTINGS_DOWNLOAD_DIR/$old_file" ]] && backup_file "$package" "$current_version" "$old_file" "$file_extension" >/dev/null
 		fi
 
 		local filename=$(build_filename "$package" "$latest_version" "$file_extension")

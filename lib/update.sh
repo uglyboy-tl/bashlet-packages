@@ -8,8 +8,6 @@ import ext/requests
 import utils
 
 # 初始化
-system.os.init
-system.arch.init
 requests.init 2>/dev/null || { log.error "Failed to initialize requests module" && exit 1; }
 
 [[ -n "${GITHUB_TOKEN:-}" ]] && requests.headers.append "Authorization" "token $GITHUB_TOKEN"

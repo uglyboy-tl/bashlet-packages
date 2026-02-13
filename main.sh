@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-
 set -euo pipefail
-
+SCRIPT_NAME="BinUp"
+VERSION="2.0.0"
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 source "$PROJECT_ROOT/lib/std/import.sh"

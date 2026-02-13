@@ -7,22 +7,6 @@ import core/args
 import core/config
 import utils
 
-extract_file() {
-	local filename="$1" extract_dir="$2"
-	local file_path="$SETTINGS_DOWNLOAD_DIR/$filename"
-
-	case "$filename" in
-	*.zip) unzip -q "$file_path" -d "$extract_dir" ;;
-	*.tar.gz | *.tgz) tar -xzf "$file_path" -C "$extract_dir" ;;
-	*.tar.xz | *.txz) tar -xJf "$file_path" -C "$extract_dir" ;;
-	*.tar.bz2 | *.tbz2) tar -xjf "$file_path" -C "$extract_dir" ;;
-	*)
-		cp "$file_path" "$extract_dir/"
-		chmod +x "$extract_dir/$(basename "$filename")"
-		;;
-	esac
-}
-
 # 确定安装目录
 _get_install_dir() {
 	local system_bin="/usr/local/bin" user_bin="$HOME/.local/bin"
@@ -60,10 +44,14 @@ _do_install_package() {
 	trap 'rm -rf "${work_dir:-}"' RETURN
 
 	item.format 1 "[解压] $filename"
-	if ! extract_file "$filename" "$work_dir"; then
+	if ! fs.file.extract "$SETTINGS_DOWNLOAD_DIR/$filename" "$work_dir"; then
 		item.format 1 "$package: 解压失败"
 		return 1
 	fi
+
+	local no_ext_files=($(find "$work_dir" -maxdepth 1 -type f ! -name "*.*" 2>/dev/null))
+	[[ ${#no_ext_files[@]} -eq 1 ]] && chmod +x "${no_ext_files[0]}"
+
 	binary_files=()
 	while IFS= read -r -d '' file; do
 		binary_files+=("$file")
