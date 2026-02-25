@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 SCRIPT_NAME="BinUp"
-VERSION="2.0.0"
+VERSION="2.1.1"
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
 source "$PROJECT_ROOT/lib/std/import.sh"
 
 import core/log
@@ -16,7 +15,6 @@ import install
 import edit
 
 main() {
-	args.name "${SCRIPT_NAME:-Demo}"
 	args.init 命令行程序下载管理器
 
 	args.add_options "version" "v" "显示版本信息"
