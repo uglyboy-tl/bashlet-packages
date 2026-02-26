@@ -72,7 +72,7 @@ cmd_update() {
 	args.init
 	args.process "$@"
 
-	title.format "检查更新"
+	console.section "检查更新"
 
 	local has_updates=false
 
@@ -87,13 +87,13 @@ cmd_update() {
 
 		# 获取云端最新信息
 		local latest_info=$(get_latest_version_and_url "$repo" "$version_type" "$file_pattern" "$file_extension") || {
-			item.format 1 "$package: 获取版本失败"
+			console.item.title 1 "$package: 获取版本失败"
 			continue
 		}
 
 		local latest_version="${latest_info%%|||*}" download_url="${latest_info#*|||}"
 		[[ -z "$latest_version" || -z "$download_url" ]] && {
-			item.format 1 "$package: 获取版本信息失败"
+			console.item.title 1 "$package: 获取版本信息失败"
 			continue
 		}
 
@@ -102,17 +102,16 @@ cmd_update() {
 		has_updates=true
 
 		if [[ -z "$current_version" ]]; then
-			item.format 1 "$package: 未下载 (最新: $latest_version)"
+			console.item.title 1 "$package: 未下载 (最新: $latest_version)"
 		elif [[ "$current_version" != "$latest_version" ]]; then
-			item.format 1 "$package: 有新版本 $current_version $POWERLINE_POINTING_ARROW  $latest_version"
+			console.item.title 1 "$package: 有新版本 $current_version $POWERLINE_POINTING_ARROW  $latest_version"
 		else
-			item.format 1 "$package: 已是最新版本 $current_version"
+			console.item.title 1 "$package: 已是最新版本 $current_version"
 			has_updates=false
 		fi
 	done
 
 	[[ "$has_updates" == "true" ]] && {
-		console.stdout "========="
-		console.stdout "运行 './bin-updater.sh upgrade' 下载更新"
+		console.footer "运行 \`./bin-updater.sh upgrade\` 下载更新"
 	}
 }

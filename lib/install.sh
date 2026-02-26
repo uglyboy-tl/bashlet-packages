@@ -24,17 +24,17 @@ _do_install_package() {
 	local package="$1"
 
 	current_version=$(get_package_property "$package" "current_version")
-	[[ -z "$current_version" ]] && item.format 1 "$package: 未下载，请先运行 upgrade" && return 1
+	[[ -z "$current_version" ]] && console.item.title 1 "$package: 未下载，请先运行 upgrade" && return 1
 
 	file_extension=$(get_package_property "$package" "file_extension")
 	binary_name=$(get_package_property "$package" "binary_name")
 
-	item.format 1 "安装 $package (版本: $current_version)..."
+	console.item.title 1 "$package: 开始安装 (版本: $current_version)..."
 
 	# 构建文件名
 	filename="${package}-${current_version}${file_extension:+.${file_extension}}"
 	archive_file="$SETTINGS_DOWNLOAD_DIR/$filename"
-	[[ ! -f "$archive_file" ]] && item.format 1 "$package: 文件不存在: $archive_file" && return 1
+	[[ ! -f "$archive_file" ]] && console.item.title 1 "$package: 文件不存在: $archive_file" && return 1
 
 	# 确定安装目录
 	install_dir=$(_get_install_dir)
@@ -43,9 +43,9 @@ _do_install_package() {
 	local work_dir="$(fs.mktemp "-d")" || return 1
 	trap 'rm -rf "${work_dir:-}"' RETURN
 
-	item.format 1 "[解压] $filename"
+	console.item.item "[解压] $filename"
 	if ! fs.file.extract "$SETTINGS_DOWNLOAD_DIR/$filename" "$work_dir"; then
-		item.format 1 "$package: 解压失败"
+		console.item.item "$package: 解压失败"
 		return 1
 	fi
 
@@ -71,7 +71,7 @@ _do_install_package() {
 		else
 			target_file="$install_dir/$(basename "$binary_file")"
 		fi
-		item.format 1 "[安装] 到 $target_file"
+		console.item.item "[安装] 到 $target_file"
 		cp "$binary_file" "$target_file" 2>/dev/null || {
 			file_name="$(basename "$binary_file")"
 			log.warn "$file_name: 复制失败"
@@ -82,11 +82,11 @@ _do_install_package() {
 	done
 
 	if [[ ${#failed_packages[@]} -eq 0 ]]; then
-		item.format 1 "[完成] 安装成功 ($installed_count 个文件)"
-		item.format 1 "[路径] $install_dir 已添加到 PATH"
+		console.item.item "[完成] 安装成功 ($installed_count 个文件)"
+		console.item.item "[路径] $install_dir 已添加到 PATH"
 		return 0
 	else
-		item.format 1 "[失败] 安装 ${failed_packages[@]} 时出现错误"
+		console.item.item "[失败] 安装 ${failed_packages[@]} 时出现错误"
 		return 1
 	fi
 }
@@ -99,7 +99,7 @@ cmd_install() {
 
 	local -n target_packages=$(args.args)
 
-	title.format "安装包"
+	console.section "安装包"
 
 	local success_count=0 fail_count=0
 
@@ -116,6 +116,5 @@ cmd_install() {
 		console.stdout ""
 	done
 
-	console.stdout "========="
-	console.stdout "共 ${#target_packages[@]} 个包，$success_count 个成功，$fail_count 个失败"
+	console.footer "共 ${#target_packages[@]} 个包，$success_count 个成功，$fail_count 个失败"
 }

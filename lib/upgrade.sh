@@ -67,7 +67,7 @@ cmd_upgrade() {
 
 	local packages_skipped=0
 
-	title.format "下载更新"
+	console.section "下载更新"
 
 	for package in "${packages_to_upgrade[@]}"; do
 		local file_extension current_version latest_version download_url
@@ -77,21 +77,21 @@ cmd_upgrade() {
 		download_url=$(get_package_property "$package" "download_url")
 
 		if [[ -z "$latest_version" ]]; then
-			item.format 1 "$package: 没有云端信息，请先运行 'update'"
+			console.item.title 1 "$package: 没有云端信息，请先运行 'update'"
 			continue
 		fi
 
 		if [[ -z "$download_url" ]]; then
-			item.format 1 "$package: 没有下载链接，请先运行 'update'"
+			console.item.title 1 "$package: 没有下载链接，请先运行 'update'"
 			continue
 		fi
 
 		if [[ -z "$current_version" ]]; then
-			item.format 1 "$package: 未下载，将下载 $latest_version"
+			console.item.title 1 "$package: 未下载，将下载 $latest_version"
 		elif [[ "$current_version" != "$latest_version" ]]; then
-			item.format 1 "$package: 有新版本 $current_version -> $latest_version"
+			console.item.title 1 "$package: 有新版本 $current_version -> $latest_version"
 		else
-			item.format 1 "$package: 已是最新版本 $current_version"
+			console.item.title 1 "$package: 已是最新版本 $current_version"
 			((packages_skipped++)) || true
 			continue
 		fi
@@ -105,18 +105,17 @@ cmd_upgrade() {
 		local filename=$(build_filename "$package" "$latest_version" "$file_extension")
 		local output_file="$SETTINGS_DOWNLOAD_DIR/$filename"
 
-		item.format 1 "[下载] $filename"
+		console.item.item "[下载] $filename"
 		if download_file "$download_url" "$output_file"; then
-			item.format 1 "[完成] 下载成功"
+			console.item.item "[完成] 下载成功"
 			save_version_info "$package" "$latest_version"
 		else
-			item.format 1 "$package: 下载失败"
+			console.item.item "$package: 下载失败"
 			rm -f "$output_file"
 		fi
 	done
 
-	console.stdout "========="
 	local total=${#packages_to_upgrade[@]}
 	local updated=$((total - packages_skipped))
-	((total > 0)) && console.stdout "共 $total 个包，$updated 个已更新，$packages_skipped 个跳过"
+	((total > 0)) && console.footer "共 $total 个包，$updated 个已更新，$packages_skipped 个跳过"
 }
