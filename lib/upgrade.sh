@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 import std/console
+import std/fs
 import core/log
 import core/args
 import core/config
@@ -35,6 +36,7 @@ backup_file() {
 
 	mkdir -p "$backup_dir"
 	mv "$source_file" "$backup_file"
+	fs.cleanup "${backup_dir}/${package}-"
 	log.debug "[Backup] $backup_file"
 }
 
