@@ -1,0 +1,55 @@
+[01-网络接口信息]
+var:ip_link = 'ip -s link show eth0 2>/dev/null || ip -s link show $(ip link show | grep -E "^[0-9]+:" | grep -v "lo:" | head -1 | awk -F: "{print \$2}" | xargs) 2>/dev/null'
+var:ethtool = 'sudo ethtool eth0 2>/dev/null | grep -E "Speed|Duplex|Link detected|Auto-negotiation" || echo ""'
+网卡速度 = 'echo "@ethtool" | grep "Speed:" | awk "{print \$2}" || echo "N/A"'
+双工模式 = 'echo "@ethtool" | grep "Duplex:" | awk "{print \$2}" || echo "N/A"'
+自动协商 = 'echo "@ethtool" | grep "Auto-negotiation:" | awk "{print \$2}" || echo "N/A"'
+连接状态 = 'echo "@ethtool" | grep "Link detected:" | awk "{print \$3}" :: status :: yes :: no'
+RX错误 = 'echo "@ip_link" | awk "/RX:/ {getline; print \$3}" || echo "0"'
+TX错误 = 'echo "@ip_link" | awk "/TX:/ {getline; print \$3}" || echo "0"'
+
+[02-IP地址和路由]
+var:ip_addr = 'ip addr show eth0 2>/dev/null | grep "inet " || ip addr show | grep -A2 -E "^[0-9]+: (eth|enp|wlan)" | grep "inet "'
+var:gateway_ip = 'ip route 2>/dev/null | grep default | awk "{print \$3}" | head -1'
+IP地址 = 'echo "@ip_addr" | awk "{print \$2}" | head -1'
+默认网关 = 'echo "@gateway_ip"'
+Docker网络数 = "docker network ls 2>/dev/null | grep -c bridge || true"
+
+[03-DNS配置]
+var:dns_ip = 'cat /etc/resolv.conf 2>/dev/null | grep nameserver | head -1 | awk "{print \$2}"'
+主DNS = 'echo "@dns_ip"'
+DNS服务器数 = "cat /etc/resolv.conf 2>/dev/null | grep -c nameserver || echo '0'"
+百度解析 = 'ping -c 1 -W 1 baidu.com 2>/dev/null | grep -o "time=[0-9.]*" | cut -d= -f2 || echo "失败" :: ms'
+GitHub解析 = 'ping -c 1 -W 1 github.com 2>/dev/null | grep -o "time=[0-9.]*" | cut -d= -f2 || echo "失败" :: ms'
+
+[03-DNS配置.DNS配置文件]
+code = "cat /etc/resolv.conf 2>/dev/null"
+
+[04-网络连接统计]
+var:ss_total = "ss -s 2>/dev/null"
+总连接数 = 'echo "@ss_total" | grep "Total:" | awk "{print \$2}"'
+TCP连接 = 'echo "@ss_total" | grep "TCP:" | awk "{print \$2}"'
+UDP连接 = 'echo "@ss_total" | grep "UDP:" | awk "{print \$2}"'
+监听端口 = "ss -tuln 2>/dev/null | grep LISTEN | wc -l"
+[04-网络连接统计.监听端口列表]
+code = "ss -tuln | awk 'NR>1 && \$5~/:[0-9]+$/ {split(\$5, a, \":\"); p=a[length(a)]; if(\$1==\"tcp\") t[p]=1; else if(\$1==\"udp\") u[p]=1} END {printf \"TCP: \"; for(i in t) printf \"%s \", i; print \"\"; printf \"UDP: \"; for(i in u) printf \"%s \", i; print \"\"}'"
+
+[05-网络连通性测试]
+var:gateway_ip = 'ip route 2>/dev/null | grep default | awk "{print \$3}" | head -1'
+var:dns_ip = 'cat /etc/resolv.conf 2>/dev/null | grep nameserver | head -1 | awk "{print \$2}"'
+网关IP = 'echo "@gateway_ip"'
+网关延迟 = 'ping -c 1 -W 2 @gateway_ip 2>/dev/null | grep -o "time=[0-9.]*" | cut -d= -f2 || echo "失败" :: ms'
+DNS服务器 = 'echo "@dns_ip"'
+DNS延迟 = 'ping -c 1 -W 2 @dns_ip 2>/dev/null | grep -o "time=[0-9.]*" | cut -d= -f2 || echo "失败" :: ms'
+
+[06-网络错误日志检查.网络错误日志(最近5小时)]
+code = 'sudo journalctl --since "5 hour ago" 2>/dev/null | grep -i "network\|eth0\|dhcp\|dns" | grep -i "error\|fail\|warn" | tail -5 || echo "未找到相关错误日志"'
+
+[07-sysctl网络配置状态.关键网络参数]
+code = 'for param in net.core.rmem_max net.core.wmem_max net.ipv4.tcp_low_latency net.ipv4.tcp_congestion_control net.ipv4.tcp_tw_reuse; do value=$(sudo sysctl -n "$param" 2>/dev/null || echo "未知"); echo "  $param = $value"; done'
+
+[08-防火墙与安全防护.SSH攻击日志(今日)]
+code = 'echo "攻击者尝试的用户名(前5个):"; journalctl --since "today" 2>/dev/null | grep -E "Failed password for|Invalid user" | awk -F"for|user" "{print \$2}" | awk "{print \$1}" | sort | uniq -c | sort -rn | head -5 || echo "  无数据"'
+
+[08-防火墙与安全防护.UFW防火墙规则]
+code = "sudo ufw status verbose 2>/dev/null || echo 'ufw状态检查失败'"
