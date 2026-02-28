@@ -1,0 +1,53 @@
+# 动态变量声明
+dynamic:device = "lsblk -d -n -o NAME 2>/dev/null | grep -E '^sd[a-z]|^nvme' | sort -u"
+
+# 静态部分
+[01-存储设备概览]
+code = "lsblk -d -o NAME,SIZE,MODEL 2>/dev/null"
+
+[02-磁盘使用情况]
+code = 'df -h 2>/dev/null | grep -E "^/dev/" | awk "NR==1 {printf \"%-20s %-10s %-10s %-10s %-6s %s\\n\", \"文件系统\", \"容量\", \"已用\", \"可用\", \"使用率\", \"挂载点\"} NR>1 {printf \"%-20s %-10s %-10s %-10s %-6s %s\\n\", \$1, \$2, \$3, \$4, \$5, \$6}"'
+
+# 动态部分 - 设备基本信息模板
+[03-设备基本信息.@device]
+var:type_@device = "lsblk -d -n -o ROTA /dev/@device 2>/dev/null | head -1 | sed 's/0/SSD/; s/1/HDD/'"
+型号 = "lsblk -d -n -o MODEL /dev/@device 2>/dev/null | xargs || echo '未知'"
+序列号 = "lsblk -d -n -o SERIAL /dev/@device 2>/dev/null | xargs || echo '未知'"
+挂载点 = "lsblk -o MOUNTPOINT /dev/@device 2>/dev/null | grep -v 'MOUNTPOINT' | grep -v '^$' | grep -v '-' | sort -u | tr '\n' ',' | sed 's/,$//' || echo '未挂载'"
+电源管理 = "power_state=\$(sudo sdparm --page=po /dev/@device 2>/dev/null | grep -E 'STANDBY_Z' | head -1 | awk '{print \$2}' || echo 'N/A'); if [ \"\$power_state\" = \"0\" ]; then echo '禁用自动待机'; elif [ \"\$power_state\" = \"1\" ]; then echo '启用自动待机'; else echo '未知状态(\$power_state)'; fi"
+健康状态 = 'sudo smartctl -H /dev/@device 2>/dev/null | grep -E "SMART overall-health|test result" | awk -F": " "{print \$2}" || echo "检查失败"'
+
+# 动态部分 - 设备性能信息模板
+[04-设备性能信息.@device]
+var:iostat_@device = "iostat -x 1 1 2>/dev/null"
+var:smartctl_@device = "sudo smartctl -a /dev/@device 2>/dev/null"
+设备类型 = "echo '@type_@device'"
+# 通用SMART指标（所有设备都支持）
+SMART-通电时间 = 'echo "@smartctl_@device" | grep -iE "Power[_ ]On[_ ]Hours" | awk "{for(i=NF;i>=1;i--) if(\$i ~ /^[0-9,]+$/) {gsub(/,/,\"\",\$i); print \$i; break}}" :: 小时'
+SMART-启停次数 = 'echo "@smartctl_@device" | grep -iE "Power[_ ]Cycle[_ ]Count|Start[_ ]Stop[_ ]Count" | awk "{for(i=NF;i>=1;i--) if(\$i ~ /^[0-9,]+$/) {gsub(/,/,\"\",\$i); print \$i; break}}"'
+SMART-传输错误 = 'echo "@smartctl_@device" | grep -i "UDMA_CRC_Error_Count" | awk "{for(i=NF;i>=1;i--) if(\$i ~ /^[0-9,]+$/) {gsub(/,/,\"\",\$i); print \$i; break}}"'
+
+# SSD特定指标
+[04-设备性能信息.@device.SSD]
+condition = "echo '@type_@device'"
+SMART-总写入量 = 'echo "@smartctl_@device" | grep -i "Total_LBAs_Written" | awk "{print \$NF}"'
+SMART-剩余寿命 = 'echo "@smartctl_@device" | grep -iE "Percent_Lifetime_Remain|Percentage_Lifetime_Left|Remaining_Lifetime|Wear_Leveling_Count" | awk "{print \$NF}" | head -1 :: %'
+SMART-温度 = 'echo "@smartctl_@device" | grep -i "Temperature_Celsius" | awk "{print \$(NF-2)}" :: °C'
+
+# HDD特定指标
+[04-设备性能信息.@device.HDD]
+condition = "echo '@type_@device'"
+SMART-装载次数 = 'echo "@smartctl_@device" | grep -iE "Load_Cycle_Count|Load_Cycle|Load.*Count" | awk "{print \$NF}"'
+SMART-温度 = 'echo "@smartctl_@device" | grep -i "Temperature_Celsius" | awk "{print \$NF}" :: °C'
+
+# I/O性能统计
+[04-设备性能信息.@device]
+读取速度 = 'echo "@iostat_@device" | tail -n +7 | grep "^@device " | awk "{print \$3}" :: KB/s'
+写入速度 = 'echo "@iostat_@device" | tail -n +7 | grep "^@device " | awk "{print \$9}" :: KB/s'
+I/O等待 = 'echo "@iostat_@device" | tail -n +7 | grep "^@device " | awk "{r=\$14; w=\$15; if(r==\"0.00\" && w==\"0.00\") print \"0.00\"; else if(r==\"0.00\") print w; else if(w==\"0.00\") print r; else printf \"%.2f\", (r+w)/2}" :: ms'
+
+[05-系统日志错误检查.内核日志(dmesg)]
+code = "sudo dmesg 2>/dev/null | grep -i 'error\\|fail\\|bad\\|corrupt' | grep -i 'sd[a-z]\\|disk\\|storage' | tail -5 || echo '未找到相关内核错误日志'"
+
+[05-系统日志错误检查.系统日志(journalctl)]
+code = "sudo journalctl -p err,warn --since '1 day ago' 2>/dev/null | grep -iE 'sdparm|udev-worker|block device|scsi|usb.*disk|ata|disk error|io error|read error|write error|smart|mount.*fail|filesystem.*error' | grep -v 'COMMAND=' | tail -10 || echo '未找到相关存储系统错误日志'"
