@@ -1,0 +1,30 @@
+[01-系统启动时间分析]
+var:startup_info = "systemd-analyze time --no-pager 2>/dev/null | head -1"
+内核启动时间 = 'echo "@startup_info" | sed -E "s/.*(in|\+) ([^ ]+) \(kernel\).*/\2/"'
+用户空间启动时间 = 'echo "@startup_info" | sed -E "s/.*(in|\+) ([^ ]+) \(userspace\).*/\2/"'
+总启动时间 = 'echo "@startup_info" | sed -E "s/.*= ([^ ]+) .*/\1/"'
+
+[01-系统启动时间分析.Docker启动信息]
+var:docker_blame = "systemd-analyze blame --no-pager 2>/dev/null"
+Docker容器数量 = "docker ps -q 2>/dev/null | wc -l || true"
+Docker服务启动时间 = 'echo "@docker_blame" | awk "/docker\\.service/ {print \$1}"'
+
+[01-系统启动时间分析.启动瓶颈服务]
+瓶颈服务-1 = 'echo "@docker_blame" | awk "\$1+0 > 2 {print \$2 \" (\" \$1 \")\"}" | head -1'
+瓶颈服务-2 = 'echo "@docker_blame" | awk "\$1+0 > 2 {print \$2 \" (\" \$1 \")\"}" | head -2 | tail -1'
+瓶颈服务-3 = 'echo "@docker_blame" | awk "\$1+0 > 2 {print \$2 \" (\" \$1 \")\"}" | head -3 | tail -1'
+
+[02-高资源进程分析.CPU占用Top5]
+code = 'ps aux --sort=-%cpu 2>/dev/null | head -6 | awk "NR==1 {printf \"%-10s %6s %6s %6s %s\\n\", \"USER\", \"PID\", \"CPU%\", \"MEM%\", \"COMMAND\"} NR>1 {cmd=\$11; gsub(/.*\\//, \"\", cmd); printf \"%-10s %6s %6s %6s %s\\n\", \$1, \$2, \$3\"%\", \$4\"%\", cmd}"'
+
+[02-高资源进程分析.内存占用Top5]
+code = 'ps aux --sort=-%mem 2>/dev/null | head -6 | awk "NR==1 {printf \"%-10s %6s %6s %6s %s\\n\", \"USER\", \"PID\", \"CPU%\", \"MEM%\", \"COMMAND\"} NR>1 {cmd=\$11; gsub(/.*\\//, \"\", cmd); printf \"%-10s %6s %6s %6s %s\\n\", \$1, \$2, \$3\"%\", \$4\"%\", cmd}"'
+
+[02-高资源进程分析.高资源进程]
+code = 'ps aux --sort=-%cpu 2>/dev/null | awk "NR>1 && \$3+0 > 50 {cmd=\$11; gsub(/.*\\//, \"\", cmd); print \"  \" cmd \" (\" \$3 \"%)\"}" | head -3 || echo "  无"'
+
+[02-高资源进程分析.僵尸进程检查]
+code = 'ps aux 2>/dev/null | awk "\$8==\"Z\" {count++; print \"  PID=\" \$2 \" \" \$11} END {if(count+0==0) print \"\\n  无\"; else print \"\\n  共\" count \"个\"}" | head -6; echo "";'
+
+[03-软件包管理.最近7天安装]
+code = "bash apthist.sh -d 7"
