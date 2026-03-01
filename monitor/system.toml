@@ -1,0 +1,62 @@
+title = "系统健康报告"
+
+[01-CPU硬件信息]
+var:lscpu = "lscpu"
+CPU架构 = 'echo "@lscpu" | grep "Architecture" | awk -F": " "{print \$2}" | tr -s " "'
+CPU型号 = 'echo "@lscpu" | grep "Model name" | awk -F": " "{print \$2}" | tr -s " "'
+CPU核心数 = "nproc"
+CPU当前频率 = 'cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq 2>/dev/null | awk "{print int(\$1/1000) \" MHz\"}" || echo N/A'
+CPU最大频率 = 'echo "@lscpu" | grep "CPU max MHz" | awk -F": " "{print \$2}" :: MHz'
+CPU最小频率 = 'echo "@lscpu" | grep "CPU min MHz" | awk -F": " "{print \$2}" :: MHz'
+
+[02-温度与电压]
+CPU温度 = 'vcgencmd measure_temp 2>/dev/null | grep -oE "[0-9]+\\.?[0-9]*" :: °C'
+核心电压 = 'vcgencmd measure_volts core 2>/dev/null | grep -oE "[0-9]+\\.[0-9]+"'
+ARM时钟 = 'vcgencmd measure_clock arm 2>/dev/null | awk -F= "{printf \"%.0f MHz\", \$2/1000000}"'
+
+[03-内存状态]
+var:free_info = "free -m"
+内存总量 = 'echo "@free_info" | awk "/^Mem:|^内存/{print \$2}" :: MB'
+已用内存 = 'echo "@free_info" | awk "/^Mem:|^内存/{print \$3}" :: MB'
+内存使用率 = 'free | awk "/^Mem:|^内存/{printf \"%.1f\", \$3/\$2*100}" :: %'
+交换空间总量 = 'echo "@free_info" | awk "/^Swap:|^交换/{print \$2}" :: MB'
+交换空间使用 = 'echo "@free_info" | awk "/^Swap:|^交换/{print \$3}" :: MB'
+
+[04-系统负载]
+var:loadavg = "cat /proc/loadavg"
+负载(1m) = 'echo "@loadavg" | awk "{print \$1}"'
+负载(5m) = 'echo "@loadavg" | awk "{print \$2}"'
+负载(15m) = 'echo "@loadavg" | awk "{print \$3}"'
+每核心负载 = 'cores=$(nproc 2>/dev/null || echo 1); load1=$(echo "@loadavg" | awk "{print \$1}"); echo "$load1 $cores" | awk "{printf \"%.2f\", \$1/\$2}"'
+
+[05-硬件设备信息.系统信息]
+code = "uname -a"
+
+[05-硬件设备信息.树莓派型号]
+code = 'cat /proc/device-tree/model 2>/dev/null | tr -d "\0" || echo "非树莓派设备"'
+
+[05-硬件设备信息.PCI设备]
+code = "lspci 2>/dev/null | head -10 || echo '无PCI设备'"
+
+[05-硬件设备信息.USB设备]
+code = "lsusb 2>/dev/null | head -10 || echo '无USB设备'"
+
+[06-系统日志硬件错误.dmesg错误]
+code = "dmesg -T --level=err 2>/dev/null | grep -i 'cpu\\|memory\\|thermal\\|voltage\\|hardware' | tail -10 || echo '无硬件错误'"
+
+[06-系统日志硬件错误.journalctl错误]
+code = "journalctl --since='1 day ago' --priority=err 2>/dev/null | grep -i 'cpu\\|memory\\|thermal\\|hardware.*error' | tail -10 || echo '无硬件错误'"
+
+[07-关键服务状态]
+systemd-sysctl = "systemctl is-active systemd-sysctl 2>/dev/null || true"
+systemd-timesyncd = "systemctl is-active systemd-timesyncd 2>/dev/null || true"
+NetworkManager = "systemctl is-active NetworkManager 2>/dev/null || true"
+fail2ban = "systemctl is-active fail2ban 2>/dev/null || true"
+smartmontools = "systemctl is-active smartmontools 2>/dev/null || true"
+ssh = "systemctl is-active ssh 2>/dev/null || true"
+rsyslog = "systemctl is-active rsyslog 2>/dev/null || true"
+cron = "systemctl is-active cron 2>/dev/null || true"
+docker = "systemctl is-active docker 2>/dev/null || true"
+blk-availability = "systemctl is-active blk-availability 2>/dev/null || true"
+systemd-journald = "systemctl is-active systemd-journald 2>/dev/null || true"
+systemd-udevd = "systemctl is-active systemd-udevd 2>/dev/null || true"
