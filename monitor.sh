@@ -15,58 +15,21 @@ import core/config
 import core/report
 
 DEFAULT_OUTPUT_DIR="logs"
-OUTPUT_DIR=""
-CONFIG_FILE=""
-FORCE_RUN=false
-MAX_AGE_HOURS=24
+OPT_OUTPUT_DIR=""
+OPT_CONFIG_FILE=""
+OPT_FORCE_RUN=false
+OPT_MAX_AGE_HOURS=24
 
-declare -gA monitor_checks=()
-declare -gA monitor_cache=()
+declare -gA MONITOR_CHECKS=()
+declare -gA MONITOR_CACHE=()
 
-cmd_eval() {
-	local cmd=$1 result=""
-	result=$(eval "$cmd" 2>/dev/null) || true
-	log.debug "$cmd: $result"
+run() {
+	local result=$(bash -c "$1" 2>&1)
+	log.debug "$1 (exit=$?): $result"
 	echo "$result"
 }
 
-monitor.cache() {
-	local name="$1"
-	local cmd="$2"
-	local result
-	result=$(cmd_eval "$cmd" 2>/dev/null)
-	monitor_cache["$name"]="$result"
-}
-
-monitor.add() {
-	local name="$1"
-	local cmd="$2"
-	local unit="${3:-}"
-
-	local result
-	# 替换 @缓存名 为缓存的命令结果
-	while [[ "$cmd" =~ @([a-zA-Z_][a-zA-Z0-9_]*) ]]; do
-		local cache_name="${BASH_REMATCH[1]}"
-		local cache_value="${monitor_cache[$cache_name]:-}"
-		cmd="${cmd//@${cache_name}/${cache_value}}"
-	done
-	result=$(cmd_eval "$cmd")
-	result=$(string.trim "$result")
-	[[ -n "$unit" && -n "$result" && "$result" != "N/A" && "$unit" != "status" ]] && result="$result $unit"
-	monitor_checks["${name}"]="${result:-N/A}"
-}
-
-monitor.display() {
-	local -a check_names=()
-	report.table.begin "名称" "值"
-	for name in "${!monitor_checks[@]}"; do
-		report.table.add "$name" "${monitor_checks[${name}]:-N/A}"
-	done
-	report.table.end
-	monitor_checks=()
-}
-
-hours_since() {
+file.age() {
 	local name=$(basename "$1" .md)
 	local now=$(date +"%Y%m%d_%H%M%S")
 
@@ -82,48 +45,61 @@ hours_since() {
 	echo $((days * 24 + (time_val - file_val) / 10000))
 }
 
-check_data_freshness() {
-	[[ "$FORCE_RUN" == true ]] && {
-		log.info "强制重新采集数据"
-		return 0
-	}
+file.fresh() {
+	[[ "$OPT_FORCE_RUN" == true ]] && log.info "强制重新采集数据" && return
 
-	local latest_file=$(ls "$OUTPUT_DIR"/*.md 2>/dev/null | tail -1)
-	[[ -z "$latest_file" ]] && {
-		log.info "未找到历史记录文件"
-		return 0
-	}
+	local latest_file=$(ls "$OPT_OUTPUT_DIR"/*.md 2>/dev/null | tail -1)
+	[[ -z "$latest_file" ]] && log.info "未找到历史记录文件" && return
 
-	local age_hours=$(hours_since "$latest_file")
-
-	if ((age_hours < MAX_AGE_HOURS)); then
-		log.info "数据有效（${age_hours} 小时前）"
-		echo "跳过采集（最近报告: $latest_file）"
-		return 1
-	fi
+	local age_hours=$(file.age "$latest_file")
+	((age_hours < OPT_MAX_AGE_HOURS)) && log.info "数据有效（${age_hours} 小时前）" && echo "跳过采集（最近报告: $latest_file）" && return 1
 
 	log.info "数据已过期（${age_hours} 小时）"
-	return 0
 }
 
-config.execute_item() {
+data.cache() { MONITOR_CACHE["$1"]=$(run "$2" 2>/dev/null); }
+data.get_cache() { echo "${MONITOR_CACHE["$1"]}"; }
+
+data.vars() {
+	local key
+
+	for key in "${!_CONFIG_VALUES[@]}"; do
+		[[ "$key" == *".var:"* ]] && data.cache "${key##*.var:}" "${_CONFIG_VALUES[$key]}"
+	done
+}
+
+data.add() {
 	local name="$1"
 	local raw_value="$2"
-	local cmd="" unit=""
+	local cmd unit=""
 
+	# 解析单位分离语法
 	[[ "$raw_value" =~ ^\"(.*)\"$ ]] && raw_value="${BASH_REMATCH[1]}"
+	[[ "$raw_value" =~ ^(.+)[[:space:]]+::[[:space:]]+(.+)$ ]] && cmd="${BASH_REMATCH[1]}" && unit="${BASH_REMATCH[2]}" || cmd="$raw_value"
 
-	if [[ "$raw_value" =~ ^(.+)[[:space:]]+::[[:space:]]+(.+)$ ]]; then
-		cmd="${BASH_REMATCH[1]}"
-		unit="${BASH_REMATCH[2]}"
-	else
-		cmd="$raw_value"
-	fi
-
-	monitor.add "$name" "$cmd" "$unit"
+	local result
+	# 替换 @缓存名 为缓存的命令结果
+	while [[ "$cmd" =~ @([a-zA-Z_][a-zA-Z0-9_]*) ]]; do
+		local cache_name="${BASH_REMATCH[1]}"
+		local cache_value="$(data.get_cache "$cache_name")"
+		cmd="${cmd//@${cache_name}/${cache_value}}"
+	done
+	result=$(run "$cmd")
+	result=$(string.trim "$result")
+	[[ -n "$unit" && -n "$result" && "$result" != "N/A" && "$unit" != "status" ]] && result="$result $unit"
+	MONITOR_CHECKS["${name}"]="${result:-N/A}"
 }
 
-config.execute() {
+data.show() {
+	report.table.begin "名称" "值"
+	for name in "${!MONITOR_CHECKS[@]}"; do
+		report.table.add "$name" "${MONITOR_CHECKS[${name}]:-N/A}"
+	done
+	report.table.end
+	MONITOR_CHECKS=()
+}
+
+data.exec() {
 	local prefix="$1."
 	local key value count=0 has_code=0
 
@@ -136,14 +112,14 @@ config.execute() {
 				has_code=1
 				code_value="$value"
 			elif [[ "$key" != var:* ]]; then
-				config.execute_item "$key" "$value"
+				data.add "$key" "$value"
 				((count++))
 			fi
 		fi
 	done
 
 	# 显示非 code 项
-	((count > 0)) && monitor.display
+	((count > 0)) && data.show
 
 	# 执行 code 项
 	((has_code > 0)) && report.code "$code_value"
@@ -151,7 +127,7 @@ config.execute() {
 	return 0
 }
 
-config.dynamic() {
+data.unfold() {
 	local -A dynamic_values=()
 	local key value
 
@@ -160,7 +136,7 @@ config.dynamic() {
 		if [[ "$key" == dynamic:* ]]; then
 			local var_name="${key#dynamic:}"
 			value="${_CONFIG_VALUES[$key]}"
-			dynamic_values["$var_name"]=$(cmd_eval "$value")
+			dynamic_values["$var_name"]="$(run "$value")"
 			log.debug "Dynamic var $var_name: [${dynamic_values[$var_name]}]" >&2
 		fi
 	done
@@ -212,30 +188,7 @@ config.dynamic() {
 	done
 }
 
-config.vars() {
-	local key value
-
-	# 处理所有 var:* 声明
-	for key in "${!_CONFIG_VALUES[@]}"; do
-		if [[ "$key" == *".var:"* ]]; then
-			# 提取变量名和值
-			local var_name="${key##*.var:}"
-			value="${_CONFIG_VALUES[$key]}"
-
-			log.debug "Processing var: $key -> $var_name" >&2
-
-			# 执行命令并存储结果
-			local result=$(cmd_eval "$value")
-
-			log.debug "Var $var_name result: [$result]" >&2
-
-			# 存储到 monitor_cache（供 @引用使用）
-			monitor_cache["$var_name"]="$result"
-		fi
-	done
-}
-
-config.conditions() {
+data.contitional() {
 	local -A new_config=()
 	local key value
 
@@ -276,13 +229,13 @@ config.conditions() {
 			log.debug "Before cache replacement: $cmd" >&2
 			while [[ "$cmd" =~ @([a-zA-Z_][a-zA-Z0-9_]*) ]]; do
 				local cache_name="${BASH_REMATCH[1]}"
-				local cache_value="${monitor_cache[$cache_name]:-}"
+				local cache_value="$(data.get_cache "$cache_name")"
 				log.debug "Cache lookup: $cache_name = [$cache_value]" >&2
 				cmd="${cmd//@${cache_name}/${cache_value}}"
 			done
 			log.debug "After cache replacement: $cmd" >&2
 
-			local condition_result=$(cmd_eval "$cmd")
+			local condition_result=$(run "$cmd")
 			log.debug "Condition result: [$condition_result] vs expected: [$condition_name]" >&2
 
 			# 如果 condition 结果匹配条件名，则合并配置
@@ -312,7 +265,18 @@ config.conditions() {
 	done
 }
 
-config.display() {
+output.make() {
+	local title
+	title=$(config.get "title") || title="检测报告"
+	report.init "$title"
+
+	# 处理动态配置
+	data.unfold
+	# 处理变量声明
+	data.vars
+	# 处理条件分支
+	data.contitional
+
 	mapfile -t sections < <(config.sections | sort)
 
 	for section in "${sections[@]}"; do
@@ -320,13 +284,14 @@ config.display() {
 			# 移除序号前缀用于显示
 			local display_name="${section#*-}"
 			report.section "$display_name"
-			config.execute "$section"
+			data.exec "$section"
 
 			# 处理子子类别
 			mapfile -t subsections < <(config.sections "$section")
 			for subsection in "${subsections[@]}"; do
+				[[ -n ${subsection} ]] || continue
 				report.subsection "$subsection"
-				config.execute "$section.$subsection"
+				data.exec "$section.$subsection"
 			done
 		fi
 	done
@@ -336,64 +301,37 @@ config.display() {
 	console.stdout "报告已生成: $file ($size 字节)"
 }
 
-args_common() {
+cli.handle() {
 	args.init
-
 	args.add_options "verbose" "v" "详细输出模式"
 	args.add_options "force" "f" "强制重新采集（忽略时效性检查）"
 	args.add_options "output" "o" "指定输出目录（默认: $DEFAULT_OUTPUT_DIR）" "DIR"
 	args.add_options "config" "c" "指定配置文件" "FILE"
 	args.process "$@"
 
-	OUTPUT_DIR=$(args.get "-o" "--output") 2>/dev/null || OUTPUT_DIR="${DEFAULT_OUTPUT_DIR}/${_ARGS_CURRENT_SUBCOMMAND}/records"
-	report.dir.set "$OUTPUT_DIR"
-	CONFIG_FILE=$(args.get "-c" "--config") 2>/dev/null || CONFIG_FILE="${_ARGS_CURRENT_SUBCOMMAND}.toml"
+	OPT_OUTPUT_DIR=$(args.get "-o" "--output") 2>/dev/null || OPT_OUTPUT_DIR="${DEFAULT_OUTPUT_DIR}/${_ARGS_CURRENT_SUBCOMMAND}/records"
+	report.dir.set "$OPT_OUTPUT_DIR"
+	OPT_CONFIG_FILE=$(args.get "-c" "--config") 2>/dev/null || OPT_CONFIG_FILE="${_ARGS_CURRENT_SUBCOMMAND}.toml"
 
 	args.has "-v" "--verbose" && log.setLevel info || log.setLevel warn
-	args.has "-f" "--force" && FORCE_RUN=true
+	args.has "-f" "--force" && OPT_FORCE_RUN=true
 
-	check_data_freshness || return
+	file.fresh || return
 
 	config.loose
-	config.load "$CONFIG_FILE"
-	# 处理动态配置
-	config.dynamic
-	# 处理变量声明
-	config.vars
-	# 处理条件分支
-	config.conditions
-	config.display
-}
+	config.load "$OPT_CONFIG_FILE"
 
-cmd_system() {
-	report.init "系统健康报告"
-	args_common "$@"
-
-}
-
-cmd_performance() {
-	report.init "性能优化报告"
-	args_common "$@"
-}
-
-cmd_network() {
-	report.init "网络监控报告"
-	args_common "$@"
-}
-
-cmd_storage() {
-	report.init "存储监控报告"
-	args_common "$@"
+	output.make
 }
 
 main() {
 	args.init
 
 	args.add_options "version" "v" "显示版本信息"
-	args.add_subcommand "storage" "监控存储信息" "cmd_storage"
-	args.add_subcommand "network" "监控网络信息" "cmd_network"
-	args.add_subcommand "system" "监控系统信息" "cmd_system"
-	args.add_subcommand "performance" "监控性能信息" "cmd_performance"
+	args.add_subcommand "storage" "监控存储信息" "cli.handle"
+	args.add_subcommand "network" "监控网络信息" "cli.handle"
+	args.add_subcommand "system" "监控系统信息" "cli.handle"
+	args.add_subcommand "performance" "监控性能信息" "cli.handle"
 
 	args.process "$@"
 
