@@ -1,3 +1,5 @@
+title = "系统健康报告"
+
 [01-CPU硬件信息]
 var:lscpu = "lscpu"
 CPU架构 = 'echo "@lscpu" | grep "Architecture" | awk -F": " "{print \$2}" | tr -s " "'

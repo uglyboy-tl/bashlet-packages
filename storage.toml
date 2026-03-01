@@ -1,3 +1,5 @@
+title = "存储监控报告"
+
 # 动态变量声明
 dynamic:device = "lsblk -d -n -o NAME 2>/dev/null | grep -E '^sd[a-z]|^nvme' | sort -u"
 
