@@ -14,14 +14,14 @@ import core/args
 import core/config
 import core/report
 
-DEFAULT_OUTPUT_DIR="logs"
+DEFAULT_OUTPUT_DIR="monitor"
 OPT_OUTPUT_DIR=""
 OPT_CONFIG_FILE=""
 OPT_FORCE_RUN=false
 OPT_MAX_AGE_HOURS=24
 
-declare -gA MONITOR_CHECKS=()
-declare -gA MONITOR_CACHE=()
+declare -gA _MONITOR_CHECKS=()
+declare -gA _MONITOR_CACHE=()
 
 run() {
 	local result=$(bash -c "$1" 2>&1)
@@ -29,36 +29,22 @@ run() {
 	echo "$result"
 }
 
-file.age() {
-	local name=$(basename "$1" .md)
-	local now=$(date +"%Y%m%d_%H%M%S")
-
-	local file_day=${name:0:8}
-	local file_time=${name:9:6}
-	local now_day=${now:0:8}
-	local now_time=${now:9:6}
-
-	local days=$((now_day - file_day))
-	local time_val=$((10#${now_time:0:2} * 10000 + 10#${now_time:2:2} * 100 + 10#${now_time:4:2}))
-	local file_val=$((10#${file_time:0:2} * 10000 + 10#${file_time:2:2} * 100 + 10#${file_time:4:2}))
-
-	echo $((days * 24 + (time_val - file_val) / 10000))
-}
-
-file.fresh() {
+file.need_fresh() {
 	[[ "$OPT_FORCE_RUN" == true ]] && log.info "强制重新采集数据" && return
 
 	local latest_file=$(ls "$OPT_OUTPUT_DIR"/*.md 2>/dev/null | tail -1)
 	[[ -z "$latest_file" ]] && log.info "未找到历史记录文件" && return
 
-	local age_hours=$(file.age "$latest_file")
+	local name=$(basename "$latest_file" .md)
+	local file_timestamp=$(date -d "${name:0:4}-${name:4:2}-${name:6:2} ${name:9:2}:${name:11:2}:${name:13:2}" +%s)
+	local age_hours=$((($(date +%s) - file_timestamp) / 3600))
 	((age_hours < OPT_MAX_AGE_HOURS)) && log.info "数据有效（${age_hours} 小时前）" && echo "跳过采集（最近报告: $latest_file）" && return 1
 
 	log.info "数据已过期（${age_hours} 小时）"
 }
 
-data.cache() { MONITOR_CACHE["$1"]=$(run "$2" 2>/dev/null); }
-data.get_cache() { echo "${MONITOR_CACHE["$1"]}"; }
+data.cache() { _MONITOR_CACHE["$1"]=$(run "$2" 2>/dev/null); }
+data.get_cache() { [[ -v "_MONITOR_CACHE[$1]" ]] && echo "${_MONITOR_CACHE[$1]}" || echo ""; }
 
 data.vars() {
 	local key
@@ -87,16 +73,16 @@ data.add() {
 	result=$(run "$cmd")
 	result=$(string.trim "$result")
 	[[ -n "$unit" && -n "$result" && "$result" != "N/A" && "$unit" != "status" ]] && result="$result $unit"
-	MONITOR_CHECKS["${name}"]="${result:-N/A}"
+	_MONITOR_CHECKS["${name}"]="${result:-N/A}"
 }
 
 data.show() {
 	report.table.begin "名称" "值"
-	for name in "${!MONITOR_CHECKS[@]}"; do
-		report.table.add "$name" "${MONITOR_CHECKS[${name}]:-N/A}"
+	for name in "${!_MONITOR_CHECKS[@]}"; do
+		report.table.add "$name" "${_MONITOR_CHECKS[${name}]:-N/A}"
 	done
 	report.table.end
-	MONITOR_CHECKS=()
+	_MONITOR_CHECKS=()
 }
 
 data.exec() {
@@ -133,12 +119,7 @@ data.unfold() {
 
 	# 执行所有 dynamic:* 声明并存储结果
 	for key in "${!_CONFIG_VALUES[@]}"; do
-		if [[ "$key" == dynamic:* ]]; then
-			local var_name="${key#dynamic:}"
-			value="${_CONFIG_VALUES[$key]}"
-			dynamic_values["$var_name"]="$(run "$value")"
-			log.debug "Dynamic var $var_name: [${dynamic_values[$var_name]}]" >&2
-		fi
+		[[ "$key" == dynamic:* ]] && dynamic_values["${key#dynamic:}"]="$(run "${_CONFIG_VALUES[$key]}")"
 	done
 
 	# 如果没有动态变量，直接返回
@@ -146,8 +127,6 @@ data.unfold() {
 
 	# 展开动态节和项
 	local -A new_config=()
-	local template_count=0
-	local expanded_count=0
 	for key in "${!_CONFIG_VALUES[@]}"; do
 		# 跳过 dynamic 声明本身
 		[[ "$key" == dynamic:* ]] && continue
@@ -156,24 +135,20 @@ data.unfold() {
 
 		# 检查键名中是否包含动态变量（如 @device）
 		if [[ "$key" == *@* ]]; then
-			((template_count++))
 			# 这是一个动态模板，需要展开
 			for var_name in "${!dynamic_values[@]}"; do
 				local pattern="@${var_name}"
-				if [[ "$key" == *"$pattern"* ]]; then
-					# 对每个设备值展开模板
-					local devices_list="${dynamic_values[$var_name]}"
-					log.debug "Devices list for $var_name: [$devices_list]" >&2
-					if [[ -n "$devices_list" ]]; then
-						while IFS= read -r item; do
-							log.debug "Processing item: [$item]" >&2
-							[[ -z "$item" ]] && continue
-							local new_key="${key//$pattern/$item}"
-							new_config["$new_key"]="${value//$pattern/$item}"
-							((expanded_count++))
-						done <<<"$devices_list"
-					fi
-				fi
+				[[ "$key" == *"$pattern"* ]] || continue
+
+				# 对每个设备值展开模板
+				local devices_list="${dynamic_values[$var_name]}"
+				[[ -n "$devices_list" ]] || continue
+
+				while IFS= read -r item; do
+					[[ -z "$item" ]] && continue
+					local new_key="${key//$pattern/$item}"
+					new_config["$new_key"]="${value//$pattern/$item}"
+				done <<<"$devices_list"
 			done
 		else
 			# 静态配置项，直接复制
@@ -189,23 +164,14 @@ data.unfold() {
 }
 
 data.contitional() {
-	local -A new_config=()
-	local key value
-
-	# 复制所有现有配置
-	for key in "${!_CONFIG_VALUES[@]}"; do
-		new_config["$key"]="${_CONFIG_VALUES[$key]}"
-	done
-
 	# 收集所有可能的四级节（包含3个点的键）
 	local -A four_level_sections=()
 	for key in "${!_CONFIG_VALUES[@]}"; do
-		if [[ "$key" == *.*.*.* ]]; then
-			# 提取节前缀（去掉最后一部分）
-			local section_prefix="${key%.*}"
-			four_level_sections["$section_prefix"]=1
-		fi
+		[[ "$key" == *.*.*.* ]] && four_level_sections["${key%.*}"]=1
 	done
+
+	# 如果没有四级节，直接返回
+	[[ ${#four_level_sections[@]} -eq 0 ]] && return 0
 
 	# 处理每个四级节
 	for section_prefix in "${!four_level_sections[@]}"; do
@@ -213,55 +179,27 @@ data.contitional() {
 		local section1="${section_prefix%%.*}"
 		local remaining="${section_prefix#*.}"
 		local section2="${remaining%%.*}"
-		local section3="${remaining#*.}"
-		local condition_name="$section3"
-
-		log.debug "Processing condition section: $section_prefix -> $condition_name" >&2
+		local condition_name="${remaining#*.}"
 
 		# 获取 condition 值
 		local condition_key="$section_prefix.condition"
 		if [[ -v "_CONFIG_VALUES[$condition_key]" ]]; then
-			local condition_cmd="${_CONFIG_VALUES[$condition_key]}"
-			log.debug "Condition command: $condition_cmd" >&2
-
 			# 执行 condition 命令（先进行缓存替换）
-			local cmd="$condition_cmd"
-			log.debug "Before cache replacement: $cmd" >&2
+			local cmd="${_CONFIG_VALUES[$condition_key]}"
 			while [[ "$cmd" =~ @([a-zA-Z_][a-zA-Z0-9_]*) ]]; do
 				local cache_name="${BASH_REMATCH[1]}"
-				local cache_value="$(data.get_cache "$cache_name")"
-				log.debug "Cache lookup: $cache_name = [$cache_value]" >&2
-				cmd="${cmd//@${cache_name}/${cache_value}}"
+				cmd="${cmd//@${cache_name}/$(data.get_cache "$cache_name")}"
 			done
-			log.debug "After cache replacement: $cmd" >&2
-
-			local condition_result=$(run "$cmd")
-			log.debug "Condition result: [$condition_result] vs expected: [$condition_name]" >&2
 
 			# 如果 condition 结果匹配条件名，则合并配置
-			if [[ "$condition_result" == "$condition_name" ]]; then
-				log.debug "Condition matched for $section_prefix, merging items..." >&2
+			if [[ "$(run "$cmd")" == "$condition_name" ]]; then
 				# 将该条件分支的所有项（除 condition 外）合并到三级节
 				for subkey in "${!_CONFIG_VALUES[@]}"; do
-					if [[ "$subkey" == "$section_prefix".* ]] && [[ "$subkey" != "$condition_key" ]]; then
-						local item_name="${subkey##"$section_prefix."}"
-						local target_key="$section1.$section2.$item_name"
-						new_config["$target_key"]="${_CONFIG_VALUES[$subkey]}"
-						log.debug "Merged: $subkey -> $target_key" >&2
-					fi
+					[[ "$subkey" == "$section_prefix".* ]] && [[ "$subkey" != "$condition_key" ]] &&
+						_CONFIG_VALUES["$section1.$section2.${subkey##"$section_prefix."}"]="${_CONFIG_VALUES[$subkey]}"
 				done
-			else
-				log.debug "Condition not matched for $section_prefix" >&2
 			fi
-		else
-			log.debug "No condition found for section: $section_prefix" >&2
 		fi
-	done
-
-	# 更新全局配置
-	_CONFIG_VALUES=()
-	for key in "${!new_config[@]}"; do
-		_CONFIG_VALUES["$key"]="${new_config[$key]}"
 	done
 }
 
@@ -311,12 +249,12 @@ cli.handle() {
 
 	OPT_OUTPUT_DIR=$(args.get "-o" "--output") 2>/dev/null || OPT_OUTPUT_DIR="${DEFAULT_OUTPUT_DIR}/${_ARGS_CURRENT_SUBCOMMAND}/records"
 	report.dir.set "$OPT_OUTPUT_DIR"
-	OPT_CONFIG_FILE=$(args.get "-c" "--config") 2>/dev/null || OPT_CONFIG_FILE="${_ARGS_CURRENT_SUBCOMMAND}.toml"
+	OPT_CONFIG_FILE=$(args.get "-c" "--config") 2>/dev/null || OPT_CONFIG_FILE="${DEFAULT_OUTPUT_DIR}/${_ARGS_CURRENT_SUBCOMMAND}.toml"
 
 	args.has "-v" "--verbose" && log.setLevel info || log.setLevel warn
 	args.has "-f" "--force" && OPT_FORCE_RUN=true
 
-	file.fresh || return
+	file.need_fresh || return
 
 	config.loose
 	config.load "$OPT_CONFIG_FILE"
