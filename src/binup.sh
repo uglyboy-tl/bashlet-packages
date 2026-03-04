@@ -2,7 +2,7 @@
 set -euo pipefail
 SCRIPT_NAME="BinUp"
 VERSION="2.1.1"
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$PROJECT_ROOT/lib/std/import.sh"
 
 import core/log

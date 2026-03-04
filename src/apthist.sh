@@ -2,7 +2,7 @@
 
 set -euo pipefail
 SCRIPT_NAME="AptHist"
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$PROJECT_ROOT/lib/std/import.sh"
 
 import std/ansi
