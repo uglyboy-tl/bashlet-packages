@@ -67,10 +67,10 @@ shellcheck src/*.sh lib/*.sh
 
 ```bash
 # 格式化 src 和 lib 目录下的文件（排除 bashlet 符号链接）
-shfmt -i 2 -ci -sr -w src/*.sh lib/*.sh
+shfmt -i 2 -sr -s -w src/*.sh lib/*.sh
 
 # 检查格式化
-shfmt -i 2 -ci -sr -d src/*.sh lib/*.sh
+shfmt -i 2 -sr -s -d src/*.sh lib/*.sh
 ```
 
 ### 构建
