@@ -19,7 +19,7 @@ _get_arch_regex() {
   arm64) echo "(aarch64|arm64)" ;;
   armhf) echo "(armv7l|armhf|armv7hl|armv7l-unknown)" ;;
   i386) echo "(i686|i386|i586)" ;;
-  *) echo "$(system.arch)" ;;
+  *) system.arch ;;
   esac
 }
 
@@ -112,6 +112,6 @@ cmd_update() {
   done
 
   [[ $has_updates == "true" ]] && {
-    console.footer '运行 `./bin-updater.sh upgrade` 下载更新'
+    console.footer "运行 \`./bin-updater.sh upgrade\` 下载更新"
   }
 }

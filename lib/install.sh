@@ -49,7 +49,7 @@ _do_install_package() {
     return 1
   fi
 
-  local no_ext_files=($(find "$work_dir" -maxdepth 1 -type f ! -name "*.*" 2> /dev/null))
+  local no_ext_files=("$(find "$work_dir" -maxdepth 1 -type f ! -name "*.*" 2> /dev/null)")
   [[ ${#no_ext_files[@]} -eq 1 ]] && chmod +x "${no_ext_files[0]}"
 
   binary_files=()
@@ -86,7 +86,7 @@ _do_install_package() {
     console.item.item "[路径] $install_dir 已添加到 PATH"
     return 0
   else
-    console.item.item "[失败] 安装 ${failed_packages[@]} 时出现错误"
+    console.item.item "[失败] 安装 ${failed_packages[*]} 时出现错误"
     return 1
   fi
 }
@@ -104,7 +104,7 @@ cmd_install() {
   local success_count=0 fail_count=0
 
   for package in "${target_packages[@]}"; do
-    if ! printf '%s\n' $(config.array.items "packages") | grep -q "^${package}$"; then
+    if ! printf '%s\n' "$(config.array.items "packages")" | grep -q "^${package}$"; then
       log.error "Unknown package: $package"
       log.error "Available packages: $(config.array.items "packages")"
       exit 1
