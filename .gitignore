@@ -2,7 +2,5 @@
 .vscode
 .env
 /build
-
-/doc
 /config.toml
 /*.sh

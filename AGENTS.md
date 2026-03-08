@@ -156,14 +156,11 @@ main() {
     local output_file
     output_file=$(args.get "-o" "--output")
 }
-
-# 子命令处理函数
-cmd_list() {
-    args.init
-    args.process "$@"
-    # 处理 list 子命令
-}
 ```
+
+**重要注意事项：**
+- `args.add_options` 的第一个参数（选项内部名称）不能包含连字符 `-`，否则会导致参数解析失败
+- 如果需要长选项名称包含连字符（如 `--auto-grade`），应使用下划线作为内部名称（如 `"auto_grade"`）
 
 **args 模块常用函数：**
 - `args.init [描述]` - 初始化参数解析
