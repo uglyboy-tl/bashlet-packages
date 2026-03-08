@@ -15,7 +15,7 @@ import core/args
 import core/config
 import core/report
 
-DEFAULT_OUTPUT_DIR="monitor"
+DEFAULT_OUTPUT_DIR="assets/monitor"
 OPT_OUTPUT_DIR=""
 OPT_CONFIG_FILE=""
 OPT_FORCE_RUN=false
