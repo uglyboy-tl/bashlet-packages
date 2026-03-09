@@ -22,7 +22,7 @@ generate_test_config() {
   local config_content="{\"description\": \"test\", \"config\": {\"agents\": $agents, \"commands\": $commands, \"skills\": $skills"
 
   # 添加额外配置项（如果存在）
-  if [[ -n "$extra_config" ]]; then
+  if [[ -n $extra_config ]]; then
     config_content="$config_content, $extra_config"
   fi
 
@@ -75,13 +75,13 @@ teardown() {
 @test "test: 无参数时显示帮助错误" {
   run "$PROJECT_ROOT/src/opencode-test.sh" test
   [[ $status -ne 0 ]]
-  [[ $output == *"错误: 请提供测试用例 JSON 文件"* ]]
+  [[ $output == *"[ERROR] 请提供测试用例 JSON 文件"* ]]
 }
 
 @test "test: 验证测试文件存在性" {
   run "$PROJECT_ROOT/src/opencode-test.sh" test "$TEST_TMPDIR/nonexistent.json"
   [[ $status -ne 0 ]]
-  [[ $output == *"错误: 测试文件"* ]]
+  [[ $output == *"[ERROR] 测试文件"* ]]
 }
 
 @test "test: 接受有效的 JSON 测试文件" {
@@ -126,7 +126,7 @@ teardown() {
   cp "$TEST_ASSETS_DIR/invalid.json" "$TEST_TMPDIR/invalid.json"
   run "$PROJECT_ROOT/src/opencode-test.sh" test "$TEST_TMPDIR/invalid.json"
   [[ $status -ne 0 ]]
-  [[ $output == *"错误: 无效的 JSON 文件"* ]]
+  [[ $output == *"[ERROR] 无效的 JSON 文件"* ]]
 }
 
 @test "test: 允许缺少 description 字段" {
@@ -159,7 +159,7 @@ teardown() {
   cp "$TEST_ASSETS_DIR/no-tests.json" "$TEST_TMPDIR/no-tests.json"
   run "$PROJECT_ROOT/src/opencode-test.sh" test -v "$TEST_TMPDIR/no-tests.json"
   [[ $status -eq 0 ]]
-  [[ $output == *"警告: 测试文件缺少 tests 字段，将执行 0 个测试用例"* ]]
+  [[ $output == *"[WARN] 测试文件缺少 tests 字段，将执行 0 个测试用例"* ]]
 }
 
 @test "test: 验证输出目录创建" {
@@ -202,7 +202,7 @@ teardown() {
 }
 
 @test "test: 处理不存在的 agent 文件" {
-  generate_test_config "[\"/nonexistent/agent.md\"]"
+  generate_test_config '["/nonexistent/agent.md"]'
 
   run "$PROJECT_ROOT/src/opencode-test.sh" test -v "$TEST_TMPDIR/config.json"
   [[ $status -eq 0 ]]
@@ -265,7 +265,7 @@ teardown() {
 }
 
 @test "test: 验证 parallel 配置参数" {
-  generate_test_config "[]" "[]" "[]" "[]" "\"parallel\": 8"
+  generate_test_config "[]" "[]" "[]" "[]" '"parallel": 8'
 
   run "$PROJECT_ROOT/src/opencode-test.sh" test -v "$TEST_TMPDIR/config.json"
   [[ $status -eq 0 ]]
@@ -371,8 +371,8 @@ teardown() {
 
   # Create test configuration from assets
   sed -e "s|TEST_AGENTS_PATH|$TEST_TMPDIR/agents/python-agent.md|" \
-      -e "s|TEST_COMMANDS_PATH|$TEST_TMPDIR/commands/echo-hello.md|" \
-      "$TEST_ASSETS_DIR/e2e-test.json" > "$TEST_TMPDIR/e2e-test.json"
+    -e "s|TEST_COMMANDS_PATH|$TEST_TMPDIR/commands/echo-hello.md|" \
+    "$TEST_ASSETS_DIR/e2e-test.json" > "$TEST_TMPDIR/e2e-test.json"
 
   # Run with real opencode and capture output
   run "$PROJECT_ROOT/src/opencode-test.sh" test -v -o "$TEST_TMPDIR/e2e-output" "$TEST_TMPDIR/e2e-test.json"
@@ -384,7 +384,7 @@ teardown() {
 
   # Verify the JSONL file contains valid JSON lines
   local jsonl_file="$TEST_TMPDIR/e2e-output/python_agent_test.jsonl"
-  [[ -s "$jsonl_file" ]]
+  [[ -s $jsonl_file ]]
 
   # Verify it contains text response
   local has_text_response
@@ -452,13 +452,13 @@ teardown() {
 @test "grade: 需要指定测试文件" {
   run "$PROJECT_ROOT/src/opencode-test.sh" grade
   [[ $status -ne 0 ]]
-  [[ $output == *"错误"* ]]
+  [[ $output == *"[ERROR]"* ]]
 }
 
 @test "grade: 验证测试文件存在性" {
   run "$PROJECT_ROOT/src/opencode-test.sh" grade "$TEST_TMPDIR/nonexistent.json"
   [[ $status -ne 0 ]]
-  [[ $output == *"错误"* ]]
+  [[ $output == *"[ERROR]"* ]]
 }
 
 @test "grade: 支持 verbose 选项" {
@@ -515,20 +515,20 @@ teardown() {
 
   # 验证输出文件包含所有必需字段
   local report_file="$TEST_TMPDIR/grading/test1.json"
-  [[ -f "$report_file" ]]
+  [[ -f $report_file ]]
 
   # 检查必需字段
-  jq -e '.test_name' "$report_file" >/dev/null
-  jq -e '.score' "$report_file" >/dev/null
-  jq -e '.score.passed' "$report_file" >/dev/null
-  jq -e '.score.failed' "$report_file" >/dev/null
-  jq -e '.score.total' "$report_file" >/dev/null
-  jq -e '.score.pass_rate' "$report_file" >/dev/null
-  jq -e '.expectations' "$report_file" >/dev/null
-  jq -e '.metrics' "$report_file" >/dev/null
-  jq -e '.metrics.tokens' "$report_file" >/dev/null
-  jq -e '.metrics.tokens.total' "$report_file" >/dev/null
-  jq -e '.graded_at' "$report_file" >/dev/null
+  jq -e '.test_name' "$report_file" > /dev/null
+  jq -e '.score' "$report_file" > /dev/null
+  jq -e '.score.passed' "$report_file" > /dev/null
+  jq -e '.score.failed' "$report_file" > /dev/null
+  jq -e '.score.total' "$report_file" > /dev/null
+  jq -e '.score.pass_rate' "$report_file" > /dev/null
+  jq -e '.expectations' "$report_file" > /dev/null
+  jq -e '.metrics' "$report_file" > /dev/null
+  jq -e '.metrics.tokens' "$report_file" > /dev/null
+  jq -e '.metrics.tokens.total' "$report_file" > /dev/null
+  jq -e '.graded_at' "$report_file" > /dev/null
 }
 
 @test "grade: 正确统计定量指标" {
@@ -561,9 +561,9 @@ teardown() {
   [[ $(jq '.expectations | length' "$report_file") -eq 2 ]]
 
   # 验证每个 expectation 都有必需的字段
-  jq -e '.expectations[0].text' "$report_file" >/dev/null
-  jq -e '.expectations[0].passed' "$report_file" >/dev/null
-  jq -e '.expectations[0].evidence' "$report_file" >/dev/null
+  jq -e '.expectations[0].text' "$report_file" > /dev/null
+  jq -e '.expectations[0].passed' "$report_file" > /dev/null
+  jq -e '.expectations[0].evidence' "$report_file" > /dev/null
 
   # 验证评分汇总正确
   [[ $(jq '.score.total' "$report_file") -eq 2 ]]
@@ -600,14 +600,14 @@ teardown() {
   run qualitative_assess '[]' "$TEST_TMPDIR/test1.jsonl"
 
   [[ $status -eq 0 ]]
-  [[ "$output" == "[]" ]]
+  [[ $output == "[]" ]]
 }
 
 @test "qualitative_assess: 当测试用例不存在时返回空数组" {
   run qualitative_assess '[]' "$TEST_TMPDIR/test1.jsonl"
 
   [[ $status -eq 0 ]]
-  [[ "$output" == "[]" ]]
+  [[ $output == "[]" ]]
 }
 
 @test "qualitative_assess: 返回有效的 JSON 数组格式" {
@@ -635,11 +635,11 @@ teardown() {
 }
 
 # ============================================
-# init_test_environment 函数测试
+# create_test_environment 函数测试
 # ============================================
 
-@test "init_test_environment: 创建 .opencode 目录结构" {
-  run init_test_environment "$TEST_TMPDIR"
+@test "create_test_environment: 创建 .opencode 目录结构" {
+  run init_opencode_structure "$TEST_TMPDIR"
 
   [[ $status -eq 0 ]]
   [[ -d "$TEST_TMPDIR/.opencode/agents" ]]
@@ -647,9 +647,10 @@ teardown() {
   [[ -d "$TEST_TMPDIR/.opencode/skills" ]]
 }
 
-@test "init_test_environment: 创建 empty.md 和 grader.md" {
+@test "create_test_environment: 创建 empty.md 和 grader.md" {
   rm "$TEST_TMPDIR/.opencode/agents/grader.md"
-  run init_test_environment "$TEST_TMPDIR"
+  _ARGS_CURRENT_SUBCOMMAND="grade"
+  run init_opencode_structure "$TEST_TMPDIR" && copy_config_resources "$TEST_TMPDIR"
 
   [[ $status -eq 0 ]]
   [[ -f "$TEST_TMPDIR/.opencode/agents/empty.md" ]]
@@ -660,10 +661,8 @@ teardown() {
   [[ -s "$TEST_TMPDIR/.opencode/agents/grader.md" ]]
 }
 
-@test "init_test_environment: 如果目录已存在则不报错" {
+@test "create_test_environment: 如果目录已存在则不报错" {
   mkdir -p "$TEST_TMPDIR/.opencode/agents"
-
-  run init_test_environment "$TEST_TMPDIR"
-
+  run create_test_environment "$TEST_TMPDIR"
   [[ $status -eq 0 ]]
 }
