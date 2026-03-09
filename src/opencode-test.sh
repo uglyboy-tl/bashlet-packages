@@ -17,6 +17,8 @@ MODEL="opencode/gpt-5-nano"
 AUTOGRADE=false
 TEST_FILE=""
 TEST_ENV_DIR=""
+# Cache for test file parsing using associative array
+declare -A TEST_FILE_CACHE=()
 
 # Assets directory for resource files
 ASSETS_DIR="$PROJECT_ROOT/assets/opencode-test"
@@ -46,7 +48,6 @@ main() {
 	exit 1
 }
 
-
 # Handle common command line arguments for both test and grade subcommands
 # Usage: handle_common_args <subcommand_name> "$@"
 handle_common_args() {
@@ -62,10 +63,10 @@ handle_common_args() {
 	args.add_options "arg" "测试文件" "测试用例 JSON 文件路径"
 
 	# Add subcommand-specific options
-  case "$_ARGS_CURRENT_SUBCOMMAND" in
-  "test") args.add_options "autograde" "" "测试完成后自动评分" ;;
-  "grade") args.add_options "input" "i" "指定测试结果输入目录" "STRING";;
-  esac
+	case "$_ARGS_CURRENT_SUBCOMMAND" in
+	"test") args.add_options "autograde" "" "测试完成后自动评分" ;;
+	"grade") args.add_options "input" "i" "指定测试结果输入目录" "STRING" ;;
+	esac
 
 	# Process arguments
 	args.process "$@"
@@ -94,7 +95,7 @@ handle_common_args() {
 	if args.has "-j" "--jobs"; then
 		JOBS=$(args.get "-j" "--jobs")
 		# Validate jobs immediately - must be a positive integer
-		if ! [[ "$JOBS" =~ ^[0-9]+$ ]] || [[ "$JOBS" -le 0 ]]; then
+		if ! [[ $JOBS =~ ^[0-9]+$ ]] || [[ "$JOBS" -le 0 ]]; then
 			log.error "错误: 并发任务数必须为正整数"
 			exit 1
 		fi
@@ -111,7 +112,7 @@ handle_common_args() {
 	if args.has "--timeout"; then
 		TIMEOUT=$(args.get "--timeout")
 		# Validate timeout immediately - must be a positive integer
-		if ! [[ "$TIMEOUT" =~ ^[0-9]+$ ]] || [[ "$TIMEOUT" -le 0 ]]; then
+		if ! [[ $TIMEOUT =~ ^[0-9]+$ ]] || [[ "$TIMEOUT" -le 0 ]]; then
 			log.error "错误: 超时值必须为正整数"
 			exit 1
 		fi
@@ -166,7 +167,10 @@ cmd_test() {
 
 # Grade subcommand handler
 cmd_grade() {
-  handle_common_args "$@"
+	handle_common_args "$@"
+
+	check_dependencies
+	read_test_config
 
 	# Create test environment for grading
 	create_test_environment
@@ -180,184 +184,9 @@ cmd_grade() {
 		log.info "评分模型: $MODEL"
 	fi
 
-	# Process each test case and generate grading report
-	local test_count
-	test_count=$(jq '.tests | length' "$TEST_FILE")
-
-	for ((i = 0; i < test_count; i++)); do
-		local test_name
-		test_name=$(jq -r ".tests[$i].name" "$TEST_FILE")
-		local test_output_file="$TEST_ENV_DIR/output/${test_name}.jsonl"
-
-		if [[ ! -f $test_output_file ]]; then
-			log.warn "警告: 测试输出文件不存在: $test_output_file"
-			continue
-		fi
-
-		if [[ $VERBOSE == true ]]; then
-			log.info "评分测试: $test_name"
-		fi
-
-		# Generate grading report for this test case
-		generate_grading_report "$test_name" "$TEST_FILE" "$test_output_file" "$i"
-	done
+	grade_all_tests
 
 	log.success "评分完成，结果保存到: $OUTPUT"
-}
-
-# Generate grading report for a single test case
-generate_grading_report() {
-	local test_name="$1"
-	local test_file="$2"
-	local test_output_file="$3"
-	local test_index="$4"
-
-	# Create grading directory (hard-coded as "grading" subdirectory)
-	mkdir -p "$OUTPUT/grading"
-
-	local report_file="$OUTPUT/grading/${test_name}.json"
-
-	# Extract expectations from test file
-	local expectations_json
-	expectations_json=$(jq ".tests[$test_index].expectations // []" "$test_file")
-	local expectations_count
-	expectations_count=$(jq '. | length' <<<"$expectations_json")
-
-	# Calculate metrics from test output
-	local total_tokens=0
-	local input_tokens=0
-	local output_tokens=0
-	local tool_calls_total=0
-	local output_chars=0
-	local tool_calls_by_type="{}"
-
-	# Extract token information from step_finish events
-	if [[ -f $test_output_file ]]; then
-		# Read JSONL file as array using jq -s
-		total_tokens=$(jq -s '[.[] | select(.type == "step_finish") | .part.tokens.total // 0] | add // 0' "$test_output_file")
-		input_tokens=$(jq -s '[.[] | select(.type == "step_finish") | .part.tokens.input // 0] | add // 0' "$test_output_file")
-		output_tokens=$(jq -s '[.[] | select(.type == "step_finish") | .part.tokens.output // 0] | add // 0' "$test_output_file")
-
-		# Count tool calls
-		tool_calls_total=$(jq -s '[.[] | select(.type == "tool_use")] | length' "$test_output_file")
-
-		# Count output characters from text events
-		output_chars=$(jq -s '[.[] | select(.type == "text") | .part.text // ""] | join("") | length' "$test_output_file")
-
-		# Build tool_calls by_type
-		tool_calls_by_type=$(jq -s '[.[] | select(.type == "tool_use") | .part.tool] | group_by(.) | map({(.[0]): length}) | add // {}' "$test_output_file")
-	fi
-
-	# Perform qualitative assessment using our new function
-	local expectations_array="[]"
-	local passed_count=0
-	local failed_count=0
-
-	if [[ $expectations_count -gt 0 ]]; then
-		# Use the qualitative_assess function to get real evaluation results
-		local qualitative_result
-		qualitative_result=$(qualitative_assess "$test_file" "$test_name" "$test_output_file")
-
-		# If qualitative assessment failed or returned empty, fallback to mock
-		if [[ -z "$qualitative_result" || "$qualitative_result" == "[]" ]]; then
-			# Fallback: create mock evaluation results for each expectation
-			local expectations_eval="["
-			for ((j = 0; j < expectations_count; j++)); do
-				local expectation_desc
-				expectation_desc=$(jq -r ".[$j]" <<<"$expectations_json")
-
-				# Escape the description for JSON using rtrimstr to remove trailing newline
-				local escaped_desc
-				escaped_desc=$(printf '%s' "$expectation_desc" | jq -Rs 'rtrimstr("\n")')
-
-				# Mock evaluation: alternate between passed and failed for variety
-				local passed="true"
-				local evidence="满足期望"
-				if ((j % 2 == 1)); then
-					passed="false"
-					evidence="未满足期望"
-					((failed_count++))
-				else
-					((passed_count++))
-				fi
-
-				if [[ $j -gt 0 ]]; then
-					expectations_eval+=","
-				fi
-				expectations_eval+="{\"description\": $escaped_desc, \"passed\": $passed, \"evidence\": \"$evidence\"}"
-			done
-			expectations_eval+="]"
-			expectations_array="$expectations_eval"
-		else
-			# Use real qualitative assessment results
-			# Convert 'text' field to 'description' field to match expected format
-			expectations_array=$(echo "$qualitative_result" | jq '[.[] | .description = .text | del(.text)]')
-
-			# Count passed/failed from real results
-			passed_count=$(echo "$expectations_array" | jq '[.[] | select(.passed == true)] | length')
-			failed_count=$(echo "$expectations_array" | jq '[.[] | select(.passed == false)] | length')
-		fi
-	else
-		# No expectations defined, create a default one
-		expectations_array='[{"description": "测试执行完成", "passed": true, "evidence": "测试成功执行并生成输出"}]'
-		passed_count=1
-	fi
-
-	# Calculate pass rate
-	local total_evaluations=$((passed_count + failed_count))
-	local pass_rate="0.00"
-	if [[ $total_evaluations -gt 0 ]]; then
-		pass_rate=$(awk "BEGIN {printf \"%.2f\", $passed_count / $total_evaluations}")
-	fi
-
-	# Get current timestamp
-	local graded_at
-	graded_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-
-	# Generate summary
-	local summary="测试 $test_name 完成，通过 $passed_count/$total_evaluations 个期望。"
-
-	# Build the final report JSON using jq to ensure valid JSON
-	jq -n \
-		--arg test_name "$test_name" \
-		--argjson passed "$passed_count" \
-		--argjson failed "$failed_count" \
-		--argjson total "$total_evaluations" \
-		--argjson pass_rate "$pass_rate" \
-		--arg expectations "$expectations_array" \
-		--argjson total_tokens "$total_tokens" \
-		--argjson input_tokens "$input_tokens" \
-		--argjson output_tokens "$output_tokens" \
-		--argjson tool_calls_total "$tool_calls_total" \
-		--argjson tool_calls_by_type "$tool_calls_by_type" \
-		--argjson output_chars "$output_chars" \
-		--arg summary "$summary" \
-		--arg graded_at "$graded_at" \
-		'{
-      test_name: $test_name,
-      score: {
-        passed: $passed,
-        failed: $failed,
-        total: $total,
-        pass_rate: $pass_rate
-      },
-      expectations: $expectations | fromjson,
-      metrics: {
-        tokens: {
-          total: $total_tokens,
-          input: $input_tokens,
-          output: $output_tokens
-        },
-        tool_calls: {
-          total: $tool_calls_total,
-          by_type: $tool_calls_by_type
-        },
-        duration_seconds: 0.0,
-        output_chars: $output_chars
-      },
-      summary: $summary,
-      graded_at: $graded_at
-    }' >"$report_file"
 }
 
 # Check dependencies
@@ -372,74 +201,230 @@ check_dependencies() {
 	fi
 }
 
-# Read test configuration from JSON file
-read_test_config() {
-	if ! jq '.' "$TEST_FILE" >/dev/null 2>&1; then
-		log.error "错误: 无效的 JSON 文件 '$TEST_FILE'"
-		exit 1
+# Unified cache function that handles all test file data access
+get_cached_value() {
+	local key="$1"
+
+	# Early return if cache is already set
+	if [[ -n "${TEST_FILE_CACHE[$key]+isset}" ]]; then
+		echo "${TEST_FILE_CACHE[$key]}"
+		return
 	fi
 
-	# Check if tests field exists
-	if ! jq -e 'has("tests")' "$TEST_FILE" >/dev/null 2>&1; then
+	# Ensure content is loaded first
+	if [[ -z "${TEST_FILE_CACHE[content]+isset}" ]]; then
+		if ! jq '.' "$TEST_FILE" >/dev/null 2>&1; then
+			log.error "错误: 无效的 JSON 文件 '$TEST_FILE'"
+			exit 1
+		fi
+		TEST_FILE_CACHE[content]=$(cat "$TEST_FILE")
+	fi
+
+	case "$key" in
+	"content") ;;
+	"has_tests")
+		TEST_FILE_CACHE[has_tests]=$(jq -e 'has("tests")' <<<"${TEST_FILE_CACHE[content]}" >/dev/null 2>&1 && echo "true" || echo "false")
+		;;
+	"test_count")
+		TEST_FILE_CACHE[test_count]=$(jq -e 'has("tests")' <<<"${TEST_FILE_CACHE[content]}" >/dev/null 2>&1 && jq '.tests | length' <<<"${TEST_FILE_CACHE[content]}" || echo "0")
+		;;
+	"model" | "timeout" | "parallel")
+		TEST_FILE_CACHE[$key]=$(jq -r ".config.${key} // empty" <<<"${TEST_FILE_CACHE[content]}" 2>/dev/null)
+		;;
+	"agents" | "commands" | "skills")
+		TEST_FILE_CACHE[$key]=$(jq -e ".config | has(\"$key\") and (.$key | type == \"array\")" <<<"${TEST_FILE_CACHE[content]}" >/dev/null 2>&1 && jq -r ".config.${key}[]" <<<"${TEST_FILE_CACHE[content]}" || echo "")
+		;;
+	test_case_*_*)
+		# Parse key: test_case_<index>_<field>
+		local index="${key#test_case_}"
+		local field="${index#*_}"
+		index="${index%_*}"
+		if [[ "$field" == "files" ]]; then
+			TEST_FILE_CACHE[$key]=$(jq -c ".tests[$index].files // []" <<<"${TEST_FILE_CACHE[content]}")
+		else
+			TEST_FILE_CACHE[$key]=$(jq -r ".tests[$index].$field // empty" <<<"${TEST_FILE_CACHE[content]}")
+		fi
+		;;
+	expectations_*)
+		local test_name="${key#expectations_}"
+		TEST_FILE_CACHE[$key]=$(jq -r --arg name "$test_name" '
+				.tests[] | select(.name == $name) | .expectations // []
+			' <<<"${TEST_FILE_CACHE[content]}" 2>/dev/null || echo "[]")
+		;;
+	*)
+		log.error "错误: 未知的缓存键 '$key'"
+		exit 1
+		;;
+	esac
+
+	# Output the cached value
+	echo "${TEST_FILE_CACHE[$key]}"
+}
+
+# Simplified wrapper functions using specific keys
+get_test_case_field() { get_cached_value "test_case_$1_$2"; }
+get_test_case_files() { get_cached_value "test_case_$1_files"; }
+get_test_expectations() { get_cached_value "expectations_$1"; }
+
+read_test_config() {
+	# Ensure test file is valid by triggering content cache
+	get_cached_value "content" >/dev/null
+
+	# Show warning for missing tests field
+	has_tests_result=$(get_cached_value "has_tests")
+	if [[ "$has_tests_result" != "true" ]]; then
 		log.warn "警告: 测试文件缺少 tests 字段，将执行 0 个测试用例"
 	fi
 
 	# Read config values, use defaults if not present
 	local config_model
-	config_model=$(jq -r '.config.model // empty' "$TEST_FILE" 2>/dev/null)
+	config_model=$(get_cached_value "model")
 	if [[ -n $config_model ]]; then
 		MODEL="$config_model"
 	fi
 
-	local config_timeout
-	config_timeout=$(jq -r '.config.timeout // empty' "$TEST_FILE" 2>/dev/null)
-	if [[ -n $config_timeout ]]; then
-		TIMEOUT="$config_timeout"
+	# Only read timeout and parallel config for test command
+	if [[ "${_ARGS_CURRENT_SUBCOMMAND:-}" == "test" ]]; then
+		local config_timeout
+		config_timeout=$(get_cached_value "timeout")
+		if [[ -n $config_timeout ]]; then
+			TIMEOUT="$config_timeout"
+		fi
+
+		local config_parallel
+		config_parallel=$(get_cached_value "parallel")
+		if [[ -n $config_parallel ]]; then
+			JOBS="$config_parallel"
+		fi
+	fi
+}
+
+# Generate grading report for a single test case
+generate_grading_report() {
+	local test_name="$1"
+	local test_output_file="$2"
+	local test_index="$3"
+
+	# Create grading directory
+	mkdir -p "$OUTPUT/grading"
+	local report_file="$OUTPUT/grading/${test_name}.json"
+
+	# Extract expectations from test file using cache
+	local expectations_json
+	expectations_json=$(get_test_expectations "$test_name")
+	local expectations_count
+	expectations_count=$(jq '. | length' <<<"$expectations_json")
+
+	# Calculate quantitative metrics directly using variables
+	local total_tokens=0
+	local input_tokens=0
+	local output_tokens=0
+	local tool_calls_total=0
+	local output_chars=0
+	local tool_calls_by_type="{}"
+
+	if [[ -f $test_output_file ]]; then
+		total_tokens=$(jq -s '[.[] | select(.type == "step_finish") | .part.tokens.total // 0] | add // 0' "$test_output_file")
+		input_tokens=$(jq -s '[.[] | select(.type == "step_finish") | .part.tokens.input // 0] | add // 0' "$test_output_file")
+		output_tokens=$(jq -s '[.[] | select(.type == "step_finish") | .part.tokens.output // 0] | add // 0' "$test_output_file")
+		tool_calls_total=$(jq -s '[.[] | select(.type == "tool_use")] | length' "$test_output_file")
+		output_chars=$(jq -s '[.[] | select(.type == "text") | .part.text // ""] | join("") | length' "$test_output_file")
+		tool_calls_by_type=$(jq -s '[.[] | select(.type == "tool_use") | .part.tool] | group_by(.) | map({(.[0]): length}) | add // {}' "$test_output_file")
 	fi
 
-	local config_parallel
-	config_parallel=$(jq -r '.config.parallel // empty' "$TEST_FILE" 2>/dev/null)
-	if [[ -n $config_parallel ]]; then
-		JOBS="$config_parallel"
+	# Perform qualitative assessment and get results directly
+	local expectations_array="[]"
+	local passed_count=0
+	local failed_count=0
+
+	if [[ $expectations_count -gt 0 ]]; then
+		local qualitative_result
+		qualitative_result=$(qualitative_assess "$expectations_json" "$test_output_file")
+
+		if [[ -n $qualitative_result && "$qualitative_result" != "[]" ]]; then
+			# Use the result directly as it matches the expected format with 'text' field
+			expectations_array="$qualitative_result"
+			passed_count=$(echo "$expectations_array" | jq '[.[] | select(.passed == true)] | length')
+			failed_count=$(echo "$expectations_array" | jq '[.[] | select(.passed == false)] | length')
+		fi
+		# If qualitative assessment failed or returned empty, keep defaults (empty array, 0 counts)
+	else
+		# No expectations defined, create a default one
+		expectations_array='[{"description": "测试执行完成", "passed": true, "evidence": "测试成功执行并生成输出"}]'
+		passed_count=1
 	fi
 
-	# Validate numeric values only if they are set via command line args
-	# Config values are validated separately in execute_test_suite
+	# Calculate final report metrics
+	local total_evaluations=$((passed_count + failed_count))
+	local pass_rate="0.00"
+	if [[ $total_evaluations -gt 0 ]]; then
+		pass_rate=$(awk "BEGIN {printf \"%.2f\", $passed_count / $total_evaluations}")
+	fi
+
+	local graded_at
+	graded_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+	# Build the final report JSON directly
+	jq -n \
+		--arg test_name "$test_name" \
+		--arg expectations "$expectations_array" \
+		--argjson passed "$passed_count" \
+		--argjson failed "$failed_count" \
+		--argjson total "$total_evaluations" \
+		--argjson pass_rate "$pass_rate" \
+		--argjson total_tokens "$total_tokens" \
+		--argjson input_tokens "$input_tokens" \
+		--argjson output_tokens "$output_tokens" \
+		--argjson tool_calls_total "$tool_calls_total" \
+		--argjson tool_calls_by_type "$tool_calls_by_type" \
+		--argjson output_chars "$output_chars" \
+		--arg graded_at "$graded_at" \
+		'{
+      test_name: $test_name,
+      expectations: $expectations | fromjson,
+      score: {
+        passed: $passed,
+        failed: $failed,
+        total: $total,
+        pass_rate: $pass_rate
+      },
+      metrics: {
+        tokens: {
+          total: $total_tokens,
+          input: $input_tokens,
+          output: $output_tokens
+        },
+        tool_calls: {
+          total: $tool_calls_total,
+          by_type: $tool_calls_by_type
+        },
+        duration_seconds: 0.0,
+        output_chars: $output_chars
+      },
+      graded_at: $graded_at
+    }' >"$report_file"
 }
 
 # Qualitative assessment function
 # Evaluates expectations against test output using grader agent
-# Usage: qualitative_assess <test_file> <test_name> <output_file>
+# Usage: qualitative_assess <expectations_json> <output_file>
 # Returns: JSON array with evaluation results
 qualitative_assess() {
-	local test_file="$1"
-	local test_name="$2"
-	local output_file="$3"
+	local expectations_json="$1"
+	local output_file="$2"
 
 	# Ensure absolute paths
-	test_file="$(realpath "$test_file")"
 	output_file="$(realpath "$output_file")"
 
-	# Extract expectations from test file
-	local expectations
-	expectations=$(jq -r --arg name "$test_name" '.tests[] | select(.name == $name) | .expectations // []' "$test_file")
-
 	# If no expectations, return empty array
-	if [[ -z "$expectations" || "$expectations" == "null" || "$expectations" == "[]" ]]; then
+	if [[ -z $expectations_json || $expectations_json == "null" || $expectations_json == "[]" ]]; then
 		echo "[]"
 		return 0
 	fi
 
-	# Use existing test environment (must be created by caller)
-	if [[ -z "${TEST_ENV_DIR:-}" || ! -d "$TEST_ENV_DIR" ]]; then
-		log.error "错误: 测试环境未初始化"
-		echo "[]"
-		return 1
-	fi
-
 	# Build prompt
 	local prompt
-	prompt="请评估以下期望:\n${expectations}\n\n测试输出文件: ${output_file}"
+	prompt="请评估以下期望:\n${expectations_json}\n\n测试输出文件: ${output_file}"
 
 	# Execute opencode for qualitative assessment
 	local result
@@ -449,7 +434,7 @@ qualitative_assess() {
 		--format json 2>&1 | jq -s '[.[] | select(.type == "text")] | last | .part.text' -r)
 
 	# If opencode failed or output is empty, return empty array
-	if [[ -z "$result" || "$result" == "null" ]]; then
+	if [[ -z $result || $result == "null" ]]; then
 		echo "[]"
 		return 1
 	fi
@@ -511,7 +496,7 @@ GRADER_EOF
 # If TEST_ENV_DIR already exists and is valid, reuse it
 create_test_environment() {
 	# If test environment already exists and is valid, reuse it
-	if [[ -n "${TEST_ENV_DIR:-}" && -d "$TEST_ENV_DIR" && -d "$TEST_ENV_DIR/.opencode" ]]; then
+	if [[ -n ${TEST_ENV_DIR:-} && -d $TEST_ENV_DIR && -d "$TEST_ENV_DIR/.opencode" ]]; then
 		if [[ $VERBOSE == true ]]; then
 			log.info "复用现有测试环境: $TEST_ENV_DIR"
 		fi
@@ -536,51 +521,60 @@ create_test_environment() {
 	# Create output directory
 	mkdir -p "$TEST_ENV_DIR/output"
 
-	# Copy agents, commands, skills from config
-	if jq -e '.config | has("agents") and (.agents | type == "array" and length > 0)' "$TEST_FILE" >/dev/null 2>&1; then
-		while IFS= read -r agent_path; do
-			if [[ -n $agent_path && -f $agent_path ]]; then
-				cp "$agent_path" "$TEST_ENV_DIR/.opencode/agents/"
-				if [[ $VERBOSE == true ]]; then
-					log.info "复制 agent: $agent_path"
-				fi
-			fi
-		done < <(jq -r '.config.agents[] // empty' "$TEST_FILE")
-	fi
-
-	if jq -e '.config | has("commands") and (.commands | type == "array" and length > 0)' "$TEST_FILE" >/dev/null 2>&1; then
-		while IFS= read -r command_path; do
-			if [[ -n $command_path ]]; then
-				if [[ -d $command_path ]]; then
-					# Handle command directory
-					cp -r "$command_path" "$TEST_ENV_DIR/.opencode/commands/"
-				elif [[ -f $command_path ]]; then
-					# Handle command file (.md)
-					cp "$command_path" "$TEST_ENV_DIR/.opencode/commands/"
-				fi
-				if [[ $VERBOSE == true ]]; then
-					log.info "复制 command: $command_path"
-				fi
-			fi
-		done < <(jq -r '.config.commands[] // empty' "$TEST_FILE")
-	fi
-
-	if jq -e '.config | has("skills") and (.skills | type == "array" and length > 0)' "$TEST_FILE" >/dev/null 2>&1; then
-		while IFS= read -r skill_path; do
-			if [[ -n $skill_path && -d $skill_path ]]; then
-				cp -r "$skill_path" "$TEST_ENV_DIR/.opencode/skills/"
-				if [[ $VERBOSE == true ]]; then
-					log.info "复制 skill: $skill_path"
-				fi
-			fi
-		done < <(jq -r '.config.skills[] // empty' "$TEST_FILE")
-	fi
-
 	# Copy input files if INPUT is specified (independent of TEST_FILE existence)
-	if [[ -n "$INPUT" && -d "$INPUT/output" ]]; then
+	if [[ -n $INPUT && -d "$INPUT/output" ]]; then
 		cp -r "$INPUT/output"/. "$TEST_ENV_DIR/output/"
 		if [[ $VERBOSE == true ]]; then
 			log.info "复制输入文件到测试环境: $INPUT/output -> $TEST_ENV_DIR/output/"
+		fi
+	fi
+
+	# Copy agents, commands, skills from config only for test command
+	if [[ "${_ARGS_CURRENT_SUBCOMMAND:-}" == "test" ]]; then
+		# Get cached config arrays
+		local agents_config
+		agents_config=$(get_cached_value "agents")
+		if [[ -n "$agents_config" ]]; then
+			while IFS= read -r agent_path; do
+				if [[ -n $agent_path && -f $agent_path ]]; then
+					cp "$agent_path" "$TEST_ENV_DIR/.opencode/agents/"
+					if [[ $VERBOSE == true ]]; then
+						log.info "复制 agent: $agent_path"
+					fi
+				fi
+			done <<<"$agents_config"
+		fi
+
+		local commands_config
+		commands_config=$(get_cached_value "commands")
+		if [[ -n "$commands_config" ]]; then
+			while IFS= read -r command_path; do
+				if [[ -n $command_path ]]; then
+					if [[ -d $command_path ]]; then
+						# Handle command directory
+						cp -r "$command_path" "$TEST_ENV_DIR/.opencode/commands/"
+					elif [[ -f $command_path ]]; then
+						# Handle command file (.md)
+						cp "$command_path" "$TEST_ENV_DIR/.opencode/commands/"
+					fi
+					if [[ $VERBOSE == true ]]; then
+						log.info "复制 command: $command_path"
+					fi
+				fi
+			done <<<"$commands_config"
+		fi
+
+		local skills_config
+		skills_config=$(get_cached_value "skills")
+		if [[ -n "$skills_config" ]]; then
+			while IFS= read -r skill_path; do
+				if [[ -n $skill_path && -d $skill_path ]]; then
+					cp -r "$skill_path" "$TEST_ENV_DIR/.opencode/skills/"
+					if [[ $VERBOSE == true ]]; then
+						log.info "复制 skill: $skill_path"
+					fi
+				fi
+			done <<<"$skills_config"
 		fi
 	fi
 }
@@ -617,7 +611,7 @@ execute_test_case() {
 	fi
 
 	# Add file arguments from test case files array
-	if [[ -n "$files_json" ]]; then
+	if [[ -n $files_json ]]; then
 		# Get the directory of the test file to resolve relative paths
 		local test_file_dir
 		test_file_dir="$(dirname "$TEST_FILE")"
@@ -629,10 +623,10 @@ execute_test_case() {
 		for ((file_idx = 0; file_idx < file_count; file_idx++)); do
 			local file_name
 			file_name=$(jq -r ".[$file_idx]" <<<"$files_json")
-			if [[ -n "$file_name" ]]; then
+			if [[ -n $file_name ]]; then
 				# Resolve relative path to absolute path
 				local file_path
-				if [[ "$file_name" == /* ]]; then
+				if [[ $file_name == /* ]]; then
 					# Absolute path
 					file_path="$file_name"
 				else
@@ -668,7 +662,7 @@ execute_test_case() {
 # Execute all test cases
 execute_all_tests() {
 	local test_count
-	test_count=$(jq '.tests | length' "$TEST_FILE")
+	test_count=$(get_cached_value "test_count")
 
 	if [[ $VERBOSE == true ]]; then
 		log.info "找到 $test_count 个测试用例"
@@ -677,17 +671,41 @@ execute_all_tests() {
 	# For now, execute sequentially (parallel execution requires more complex setup)
 	for ((i = 0; i < test_count; i++)); do
 		local test_name
-		test_name=$(jq -r ".tests[$i].name" "$TEST_FILE")
+		test_name=$(get_test_case_field "$i" "name")
 		local agent
-		agent=$(jq -r ".tests[$i].agent // empty" "$TEST_FILE")
+		agent=$(get_test_case_field "$i" "agent")
 		local command
-		command=$(jq -r ".tests[$i].command // empty" "$TEST_FILE")
+		command=$(get_test_case_field "$i" "command")
 		local prompt
-		prompt=$(jq -r ".tests[$i].prompt" "$TEST_FILE")
+		prompt=$(get_test_case_field "$i" "prompt")
 		local files_json
-		files_json=$(jq -c ".tests[$i].files // []" "$TEST_FILE")
+		files_json=$(get_test_case_files "$i")
 
 		execute_test_case "$test_name" "$agent" "$command" "$prompt" "$files_json"
+	done
+}
+
+# Grade all test cases
+grade_all_tests() {
+	local test_count
+	test_count=$(get_cached_value "test_count")
+
+	for ((i = 0; i < test_count; i++)); do
+		local test_name
+		test_name=$(get_test_case_field "$i" "name")
+		local test_output_file="$TEST_ENV_DIR/output/${test_name}.jsonl"
+
+		if [[ ! -f $test_output_file ]]; then
+			log.warn "警告: 测试输出文件不存在: $test_output_file"
+			continue
+		fi
+
+		if [[ $VERBOSE == true ]]; then
+			log.info "评分测试: $test_name"
+		fi
+
+		# Generate grading report for this test case
+		generate_grading_report "$test_name" "$test_output_file" "$i"
 	done
 }
 
