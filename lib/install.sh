@@ -104,7 +104,8 @@ cmd_install() {
   local success_count=0 fail_count=0
 
   for package in "${target_packages[@]}"; do
-    if ! printf '%s\n' "$(config.array.items "packages")" | grep -q "^${package}$"; then
+    read -ra packages < <(config.array.items "packages")
+    if ! printf '%s\n' "${packages[@]}" | grep -q "^${package}$"; then
       log.error "Unknown package: $package"
       log.error "Available packages: $(config.array.items "packages")"
       exit 1

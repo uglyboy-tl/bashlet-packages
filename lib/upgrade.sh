@@ -53,7 +53,7 @@ cmd_upgrade() {
   local packages_to_upgrade=()
 
   if [[ ${#target_packages[@]} -eq 0 ]]; then
-    packages_to_upgrade=("$(config.array.items "packages")")
+    IFS=" " read -r -a packages_to_upgrade  <<< "$(config.array.items "packages")"
   else
     local all_packages
     all_packages=$(config.array.items "packages")
