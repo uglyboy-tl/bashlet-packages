@@ -1,0 +1,32 @@
+{
+  "description": "End-to-end test with real opencode",
+  "config": {
+    "agents": [
+      "TEST_AGENTS_PATH"
+    ],
+    "commands": [
+      "TEST_COMMANDS_PATH"
+    ],
+    "skills": [],
+    "model": "opencode/gpt-5-nano",
+    "timeout": 60,
+    "parallel": 1
+  },
+  "tests": [
+    {
+      "name": "python_agent_test",
+      "agent": "python-agent",
+      "command": "echo-hello",
+      "prompt": "Before doing anything, please introduce yourself by name. Then use the echo-hello command to execute its instructions. Also, I have provided you with test files that you should reference in your response.",
+      "files": [
+        "test-file1.txt",
+        "test-file2.txt"
+      ],
+      "expectations": [
+        "Agent introduces as PythonExpert",
+        "Command outputs COMMAND_ECHO_HELLO_12345XYZ",
+        "References test files"
+      ]
+    }
+  ]
+}
