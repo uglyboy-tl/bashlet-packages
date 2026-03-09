@@ -277,4 +277,12 @@ map.keys mymap
 1. 编写脚本功能代码
 2. 在 `test/` 目录下创建对应的测试文件
 3. 运行测试确保功能正常
-4. 提交前运行 shellcheck 检查代码
+4. 运行 shellcheck 检查代码
+
+## 编程理念（5 条原则）
+
+1. **提前退出（Guard Clauses）** - 函数开头先处理边界/错误情况，尽早退出，减少嵌套
+2. **解析但不验证（Parse, Don't Validate）** - 在边界解析数据，内部数据可信
+3. **原子可预测性（Atomic Predictability）** - 尽可能使用无副作用的纯函数
+4. **快速失败（Fail Fast, Fail Loud）** - 无效状态立即停止并报错，不尝试修补
+5. **有意义命名（Intentional Naming）** - 名称即文档，`isUserEligible` 比 `check()` 更好
