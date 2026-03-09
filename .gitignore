@@ -1,7 +1,6 @@
 .worktrees
 .vscode
 .env
-build
-
+/build
 /config.toml
 /*.sh

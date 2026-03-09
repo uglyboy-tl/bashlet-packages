@@ -2,4 +2,4 @@
 
 import core/config
 
-get_package_property() { echo "$(config.array.get "packages" "$1" "$2")"; }
+get_package_property() { config.array.get "packages" "$1" "$2"; }

@@ -67,10 +67,10 @@ shellcheck src/*.sh lib/*.sh
 
 ```bash
 # 格式化 src 和 lib 目录下的文件（排除 bashlet 符号链接）
-shfmt -i 2 -ci -sr -w src/*.sh lib/*.sh
+shfmt -i 2 -sr -s -w src/*.sh lib/*.sh
 
 # 检查格式化
-shfmt -i 2 -ci -sr -d src/*.sh lib/*.sh
+shfmt -i 2 -sr -s -d src/*.sh lib/*.sh
 ```
 
 ### 构建
@@ -156,14 +156,11 @@ main() {
     local output_file
     output_file=$(args.get "-o" "--output")
 }
-
-# 子命令处理函数
-cmd_list() {
-    args.init
-    args.process "$@"
-    # 处理 list 子命令
-}
 ```
+
+**重要注意事项：**
+- `args.add_options` 的第一个参数（选项内部名称）不能包含连字符 `-`，否则会导致参数解析失败
+- 如果需要长选项名称包含连字符（如 `--auto-grade`），应使用下划线作为内部名称（如 `"auto_grade"`）
 
 **args 模块常用函数：**
 - `args.init [描述]` - 初始化参数解析
@@ -280,4 +277,12 @@ map.keys mymap
 1. 编写脚本功能代码
 2. 在 `test/` 目录下创建对应的测试文件
 3. 运行测试确保功能正常
-4. 提交前运行 shellcheck 检查代码
+4. 运行 shellcheck 检查代码
+
+## 编程理念（5 条原则）
+
+1. **提前退出（Guard Clauses）** - 函数开头先处理边界/错误情况，尽早退出，减少嵌套
+2. **解析但不验证（Parse, Don't Validate）** - 在边界解析数据，内部数据可信
+3. **原子可预测性（Atomic Predictability）** - 尽可能使用无副作用的纯函数
+4. **快速失败（Fail Fast, Fail Loud）** - 无效状态立即停止并报错，不尝试修补
+5. **有意义命名（Intentional Naming）** - 名称即文档，`isUserEligible` 比 `check()` 更好
