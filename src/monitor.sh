@@ -15,7 +15,7 @@ import core/args
 import core/config
 import core/report
 
-DEFAULT_OUTPUT_DIR="assets/monitor"
+DEFAULT_OUTPUT_DIR="$(path.state_dir)"
 OPT_OUTPUT_DIR=""
 OPT_CONFIG_FILE=""
 OPT_FORCE_RUN=false
@@ -249,9 +249,9 @@ cli.handle() {
   args.add_options "config" "c" "指定配置文件" "FILE"
   args.process "$@"
 
-  OPT_OUTPUT_DIR=$(args.get "-o" "--output") 2> /dev/null || OPT_OUTPUT_DIR="${DEFAULT_OUTPUT_DIR}/${_ARGS_CURRENT_SUBCOMMAND}/records"
+  OPT_OUTPUT_DIR=$(args.get "-o" "--output") 2> /dev/null || OPT_OUTPUT_DIR="${DEFAULT_OUTPUT_DIR}/${_ARGS_CURRENT_SUBCOMMAND}"
   report.dir.set "$OPT_OUTPUT_DIR"
-  OPT_CONFIG_FILE=$(args.get "-c" "--config") 2> /dev/null || OPT_CONFIG_FILE="${DEFAULT_OUTPUT_DIR}/${_ARGS_CURRENT_SUBCOMMAND}.toml"
+  OPT_CONFIG_FILE=$(args.get "-c" "--config") 2> /dev/null || OPT_CONFIG_FILE="$(path.config_dir)/${_ARGS_CURRENT_SUBCOMMAND}.toml"
 
   args.has "-v" "--verbose" && log.setLevel info || log.setLevel warn
   args.has "-f" "--force" && OPT_FORCE_RUN=true
