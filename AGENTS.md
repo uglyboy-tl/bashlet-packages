@@ -8,281 +8,169 @@
 BashDev/
 ├── src/                # 各种脚本的入口文件目录
 │   └── *.sh            # 不同功能脚本的主入口文件
-├── lib/                # 脚本可引用的公共库文件
-│   ├── core/           # 核心 bashlet 模块（符号链接）
-│   ├── std/            # 标准 bashlet 模块（符号链接）
-│   ├── ext/            # 扩展 bashlet 模块（符号链接）
-│   └── *.sh            # 应用程序特定的公共库文件
+├── lib/                # 脚本可引用的公共库文件（符号链接到 bashlet）
+│   ├── core/           # 核心模块（args, log, config, usage）
+│   ├── std/            # 标准库（array, map, string, console）
+│   └── ext/            # 扩展库（requests, llm, select）
 ├── test/               # 测试目录
-│   ├── bats/           # Bats 测试框架（符号链接 -> bashlet/test/bats）
-│   ├── test_helper/    # 测试辅助文件（含 common-setup.bash）
-│   └── *.bats          # 各种具体测试文件
-├── build/              # 构建输出目录
-├── bashlet/tools/      # Bashlet 框架子模块提供的开发工具脚本
-│   ├── build           # 构建脚本：将模块化脚本合并为单一文件
-│   ├── test            # 测试脚本：运行 Bats 测试
-│   └── install         # 初始化脚本：设置项目环境
-├── .gitignore          # Git 忽略规则
-└── .gitmodules         # Git 子模块配置
+│   └── bats/           # Bats 测试框架
+├── bashlet/            # Bashlet 框架子模块
+└── build/              # 构建输出目录
 ```
+
+## 编程指南
+
+1. **先测试后实现** - 实现功能前，先在命令行中测试命令，确认符合预期再添加到脚本中
+2. **Debug 不猜测** - 遇到问题时，先在命令行中实测确认错误原因，再针对性修改
+3. **清理旧代码** - 每次修改后，重新检查代码，删除不再需要的函数和测试用例
+4. **提前退出（Guard Clauses）** - 函数开头处理边界情况，尽早退出
+5. **解析但不验证（Parse, Don't Validate）** - 在边界解析数据，内部数据可信；使用 `||` 处理默认值
+6. **快速失败（Fail Fast, Fail Loud）** - 无效状态立即报错，不尝试修补；使用 `requests.raise_for_status` 检查错误
+7. **有意义命名（Intentional Naming）** - 名称即文档
 
 ## 构建/检查/测试命令
 
-### 初始化项目
-
 ```bash
-# 初始化当前项目的 bashlet 子模块
+# 初始化项目
 git submodule update --init
-
-# 初始化 bashlet 项目中的子模块
-cd bashlet && git submodule update --init && cd ..
-
-# 运行 bashlet 安装工具
 bashlet/tools/install
-```
 
-### 测试
-
-使用 **Bats** 进行测试。
-
-```bash
-# 运行所有测试
+# 测试
 test/bats/bin/bats test/
 
-# 运行单个测试
-test/bats/bin/bats test/test.bats
-
-# 常用参数：-p 漂亮输出，-t TAP格式，-j 并行执行，-r 递归，-f 过滤测试名
-test/bats/bin/bats -p -j 4 -r -f "args" test/
-```
-
-### 检查（Linting）
-
-```bash
-# 检查 src 和 lib 目录下的文件（排除 bashlet 符号链接）
+# 检查和格式化
 shellcheck src/*.sh lib/*.sh
+shfmt -sr -s -w src/*.sh lib/*.sh
+
+# 构建
+bashlet/tools/build src/my-script.sh -o my-tool
 ```
 
-### 格式化
+## 环境变量配置
 
-```bash
-# 格式化 src 和 lib 目录下的文件（排除 bashlet 符号链接）
-shfmt -i 2 -sr -s -w src/*.sh lib/*.sh
-
-# 检查格式化
-shfmt -i 2 -sr -s -d src/*.sh lib/*.sh
-```
-
-### 构建
-
-```bash
-# 构建默认脚本（main.sh）
-bashlet/tools/build
-
-# 指定入口文件
-bashlet/tools/build src/my-script.sh
-
-# 指定输出文件
-bashlet/tools/build -o my-tool src/my-script.sh
-```
-
-### 运行脚本
-
-```bash
-./src/script-name.sh
-./build/script-name
-```
-
-## bashlet 使用指南
-
-本项目使用 bashlet 框架进行模块化开发。bashlet 提供了完整的模块导入、命令行参数处理、配置管理等功能。
-
-### 导入和依赖
-
-在入口文件顶部导入 `import.sh`。由于 import.sh 依赖相对路径，需要根据脚本所在位置正确设置 `PROJECT_ROOT`：
+在所有 import 之前添加 `.env` 语句，导入项目级全局变量：
 
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
 
-# 脚本在 src/ 目录下时：
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-
-# 或者脚本直接在项目根目录下时：
-# PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
 source "$PROJECT_ROOT/lib/std/import.sh"
 
-# 导入 bashlet 核心模块
+.env  # 导入 .env 文件，定义项目级全局变量
+
 import core/log
 import core/args
-import core/config
-
-# 导入 bashlet 标准库
-import std/array
-import std/map
-import std/console
-
-# 导入应用程序模块
-import mymodule
+import ext/requests
 ```
 
-### 命令行参数处理
-
-使用 `core/args` 模块处理命令行参数：
+**.env 文件示例**：
 
 ```bash
-main() {
-    # 初始化，传入脚本描述
-    args.init "我的脚本描述"
+# API Keys
+EXA_API_KEY="your-api-key"
+GITHUB_TOKEN="ghp_xxx"
 
-    # 添加选项：名称, 短选项, 描述
-    args.add_options "verbose" "v" "显示详细信息"
-    args.add_options "output" "o" "输出文件" "STRING"
+# 日志配置
+_LOG_LEVEL="DEBUG"      # 显示 debug 信息
+_LOG_USE_EXTRA=true     # 显示具体行号
+```
 
-    # 添加子命令：名称, 描述, 处理函数
-    args.add_subcommand "list" "列出项目" "cmd_list"
-    args.add_subcommand "install" "安装" "cmd_install"
+## 核心模块使用规范
 
-    # 处理参数
+### 参数处理（core/args）
+
+```bash
+import std/string
+import std/array
+import core/args
+
+# 定义枚举值
+declare -ga VALID_TYPES=("neural" "keyword" "fast")
+
+cmd_example() {
+    args.init "示例命令"
+    args.add_options "name" "n" "名称" "STRING"
+    args.add_options "force" "f" "强制执行"
+    args.add_options "limit" "l" "限制数量" "NUMBER"
+    args.add_options "type" "t" "类型" "TYPE"
     args.process "$@"
 
-    # 检查选项
-    if args.has "-v" "--verbose"; then
-        echo "详细模式"
-    fi
-
-    # 获取选项值
-    local output_file
-    output_file=$(args.get "-o" "--output")
+    # 基本参数获取
+    local name force_flag=""
+    name="$(args.get "-n" "--name")" || name=""
+    args.has "-f" "--force" && force_flag="--force"
+    
+    # 合并参数获取和自然数验证
+    local limit="$(args.get "-l" "--limit")" && string.natural.check "$limit" || limit="10"
+    
+    # 合并参数获取和枚举验证
+    local type="$(args.get "-t" "--type")" && array.contains VALID_TYPES "$type" || type=""
 }
 ```
 
-**重要注意事项：**
-- `args.add_options` 的第一个参数（选项内部名称）不能包含连字符 `-`，否则会导致参数解析失败
-- 如果需要长选项名称包含连字符（如 `--auto-grade`），应使用下划线作为内部名称（如 `"auto_grade"`）
+### 网络请求（ext/requests）
 
-**args 模块常用函数：**
-- `args.init [描述]` - 初始化参数解析
-- `args.add_options 名称 短选项 描述` - 添加选项
-- `args.add_subcommand 名称 描述 处理函数` - 添加子命令
-- `args.process "$@"` - 处理命令行参数
-- `args.has 选项...` - 检查选项是否存在
-- `args.get 短选项 [长选项]` - 获取选项值
-
-### 配置管理
-
-使用 `core/config` 模块管理配置（TOML 格式）：
+**不要直接使用 curl**，必须使用 `ext/requests` 模块（代码：`bashlet/lib/ext/requests.sh`）：
 
 ```bash
-main() {
-    # 注册配置项
-    config.register "download_dir" "downloads" "string" "下载目录"
-    config.register "max_workers" "4" "number" "最大并发数"
+import ext/requests
 
-    # 注册数组配置
-    config.array.register "packages" "repo"
+cmd_api() {
+    requests.init
+    requests.base_url "https://api.example.com"
+    requests.headers.append "Authorization" "Bearer $TOKEN"
 
-    # 加载默认配置
-    config.load
+    # GET 请求
+    local response=$(requests.get "/endpoint" "param=value")
+    requests.raise_for_status "$response"
+    response=$(requests.text "$response")
 
-    # 加载自定义配置
-    config.load "$HOME/.myapp/config.toml"
-
-    # 获取配置值
-    local dir
-    dir=$(config.get "download_dir")
-
-    # 获取数组项
-    local items
-    items=$(config.array.items "packages")
-
-    # 获取数组项属性
-    local version
-    version=$(config.array.get "packages" "golang" "version")
+    # POST 请求
+    response=$(requests.post "/endpoint" '{"key":"value"}' "application/json")
+    requests.raise_for_status "$response"
 }
 ```
 
-**config 模块常用函数：**
-- `config.register 名称 默认值 类型 描述` - 注册配置项
-- `config.array.register 数组名 键名` - 注册数组配置
-- `config.load [文件路径]` - 加载配置
-- `config.get 名称` - 获取配置值
-- `config.array.items 数组名` - 获取数组所有项
-- `config.array.get 数组名 键 属性名` - 获取数组项属性
+### 字符串处理（std/string）
 
-### 日志模块
+清理空格和类型检查（代码：`bashlet/lib/std/string.sh`）：
 
-使用 `core/log` 模块：
+```bash
+import std/string
+
+# 清理空格
+local query="${position_args[*]} $exact_query"
+query="$(string.trim "$query")"
+
+# 类型检查
+string.int.check "$var" && echo "是整数"
+string.natural.check "$var" && echo "是自然数"
+```
+
+### 数组操作（std/array）
+
+数组包含检查（代码：`bashlet/lib/std/array.sh`）：
+
+```bash
+import std/array
+
+array.contains my_array "value" && echo "存在"
+```
+
+**常用函数**：
+- `array.contains ARRAY VALUE` - 检查数组是否包含值
+- `array.len ARRAY` - 获取数组长度
+- `array.get ARRAY INDEX` - 获取指定索引元素
+- `array.append ARRAY VALUES...` - 追加元素
+
+### 日志输出（core/log）
 
 ```bash
 import core/log
 
-log.info "信息日志"
-log.success "成功"
+log.info "信息"
 log.warn "警告"
 log.error "错误"
-log.debug "调试信息"
+log.debug "调试"
 ```
-
-### 控制台输出模块
-
-使用 `std/console` 模块：
-
-```bash
-import std/console
-
-console.info "信息"
-console.success "成功"
-console.warn "警告"
-console.error "错误"
-
-console.section "标题"
-console.item.title 0 "项目标题"
-console.item.mid "中间内容"
-console.item.end "结束内容"
-```
-
-### 数组和映射操作
-
-使用 `std/array` 和 `std/map` 模块：
-
-```bash
-import std/array
-import std/map
-
-# 数组操作
-array.contains arr "value"
-array.get arr 0
-array.push arr "value"
-
-# 映射操作
-map.set mymap "key" "value"
-map.get mymap "key"
-map.has mymap "key"
-map.keys mymap
-```
-
-## 仓库特定说明
-
-- 这是一个 **通用 Bash 脚本开发环境**
-- **Git 子模块** 用于 bashlet 框架
-- 配置存储在 **TOML 格式** 文件中
-- **Bats 测试框架** 通过符号链接集成在 `test/bats/` 目录中
-- 构建输出保存在 `build/` 目录中
-- 格式化时只处理 src 和 lib 目录下的非符号链接文件
-
-## 开发工作流程
-
-1. 编写脚本功能代码
-2. 在 `test/` 目录下创建对应的测试文件
-3. 运行测试确保功能正常
-4. 运行 shellcheck 检查代码
-
-## 编程理念（5 条原则）
-
-1. **提前退出（Guard Clauses）** - 函数开头先处理边界/错误情况，尽早退出，减少嵌套
-2. **解析但不验证（Parse, Don't Validate）** - 在边界解析数据，内部数据可信
-3. **原子可预测性（Atomic Predictability）** - 尽可能使用无副作用的纯函数
-4. **快速失败（Fail Fast, Fail Loud）** - 无效状态立即停止并报错，不尝试修补
-5. **有意义命名（Intentional Naming）** - 名称即文档，`isUserEligible` 比 `check()` 更好
