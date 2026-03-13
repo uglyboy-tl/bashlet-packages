@@ -20,11 +20,11 @@ get_package_property() { config.array.get "packages" "$1" "$2"; }
 # 架构正则映射
 _get_arch_regex() {
 	case "$(system.arch)" in
-	amd64) echo "(x86_64|x64|amd64)" ;;
-	arm64) echo "(aarch64|arm64)" ;;
-	armhf) echo "(armv7l|armhf|armv7hl|armv7l-unknown)" ;;
-	i386) echo "(i686|i386|i586)" ;;
-	*) system.arch ;;
+		amd64) echo "(x86_64|x64|amd64)" ;;
+		arm64) echo "(aarch64|arm64)" ;;
+		armhf) echo "(armv7l|armhf|armv7hl|armv7l-unknown)" ;;
+		i386) echo "(i686|i386|i586)" ;;
+		*) system.arch ;;
 	esac
 }
 

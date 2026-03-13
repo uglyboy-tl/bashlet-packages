@@ -53,28 +53,28 @@ _parse_apt_log_state() {
 
 	while IFS= read -r line; do
 		case "$line" in
-		"Start-Date: "*)
-			date="${line#Start-Date: }"
-			date="${date%% *}"
-			;;
-		"Install: "*)
-			[[ $date < $_START_DATE ]] && continue
-			_split_pkg_entries "$line" entries
-			for entry in "${entries[@]}"; do
-				pkg="$(_parse_pkg_name "$entry")"
-				[[ -z $pkg ]] && continue
-				auto_flag=$(_is_auto_install "$entry" && echo 1 || echo 0)
-				_final_state_ref["$pkg"]="$date|$auto_flag|1"
-			done
-			;;
-		"Remove: "* | "Purge: "*)
-			[[ $date < $_START_DATE ]] && continue
-			_split_pkg_entries "$line" entries
-			for entry in "${entries[@]}"; do
-				pkg="$(_parse_pkg_name "$entry")"
-				[[ -n $pkg ]] && _final_state_ref["$pkg"]="$date|0|0"
-			done
-			;;
+			"Start-Date: "*)
+				date="${line#Start-Date: }"
+				date="${date%% *}"
+				;;
+			"Install: "*)
+				[[ $date < $_START_DATE ]] && continue
+				_split_pkg_entries "$line" entries
+				for entry in "${entries[@]}"; do
+					pkg="$(_parse_pkg_name "$entry")"
+					[[ -z $pkg ]] && continue
+					auto_flag=$(_is_auto_install "$entry" && echo 1 || echo 0)
+					_final_state_ref["$pkg"]="$date|$auto_flag|1"
+				done
+				;;
+			"Remove: "* | "Purge: "*)
+				[[ $date < $_START_DATE ]] && continue
+				_split_pkg_entries "$line" entries
+				for entry in "${entries[@]}"; do
+					pkg="$(_parse_pkg_name "$entry")"
+					[[ -n $pkg ]] && _final_state_ref["$pkg"]="$date|0|0"
+				done
+				;;
 		esac
 	done < "$_APT_LOG"
 }

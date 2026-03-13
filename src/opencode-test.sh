@@ -135,8 +135,8 @@ handle_common_args() {
 
 	# Add subcommand-specific options
 	case "$_ARGS_CURRENT_SUBCOMMAND" in
-	"test") args.add_options "autograde" "" "测试完成后自动评分" ;;
-	"grade") args.add_options "input" "i" "指定测试结果输入目录" "STRING" ;;
+		"test") args.add_options "autograde" "" "测试完成后自动评分" ;;
+		"grade") args.add_options "input" "i" "指定测试结果输入目录" "STRING" ;;
 	esac
 
 	# Process arguments
@@ -264,15 +264,15 @@ get_cached_value() {
 
 	# Return from parsed data with fallback
 	case "$key" in
-	"content") echo "$_PARSED_CONTENT" ;;
-	"has_tests") echo "${_PARSED_DATA[$key]:-false}" ;;
-	"test_count") echo "${_PARSED_DATA[$key]:-0}" ;;
-	"model") echo "${_PARSED_DATA[$key]:-$MODEL}" ;;
-	"timeout") echo "${_PARSED_DATA[$key]:-$TIMEOUT}" ;;
-	"parallel") echo "${_PARSED_DATA[$key]:-$JOBS}" ;;
-	"agents" | "commands" | "skills" | test_*_*) echo "${_PARSED_DATA[$key]:-}" ;;
-	expectations_*) echo "${_PARSED_DATA[$key]:-[]}" ;;
-	*) log.error "错误: 未知的缓存键 '$key'" && exit 1 ;;
+		"content") echo "$_PARSED_CONTENT" ;;
+		"has_tests") echo "${_PARSED_DATA[$key]:-false}" ;;
+		"test_count") echo "${_PARSED_DATA[$key]:-0}" ;;
+		"model") echo "${_PARSED_DATA[$key]:-$MODEL}" ;;
+		"timeout") echo "${_PARSED_DATA[$key]:-$TIMEOUT}" ;;
+		"parallel") echo "${_PARSED_DATA[$key]:-$JOBS}" ;;
+		"agents" | "commands" | "skills" | test_*_*) echo "${_PARSED_DATA[$key]:-}" ;;
+		expectations_*) echo "${_PARSED_DATA[$key]:-[]}" ;;
+		*) log.error "错误: 未知的缓存键 '$key'" && exit 1 ;;
 	esac
 }
 
