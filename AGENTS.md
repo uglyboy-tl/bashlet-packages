@@ -40,7 +40,7 @@ test/bats/bin/bats test/
 
 # 检查和格式化
 shellcheck src/*.sh lib/*.sh
-shfmt -sr -s -w src/*.sh lib/*.sh
+shfmt -sr -s -ci -w src/*.sh lib/*.sh
 
 # 构建
 bashlet/tools/build src/my-script.sh -o my-tool
@@ -48,7 +48,7 @@ bashlet/tools/build src/my-script.sh -o my-tool
 
 ## 环境变量配置
 
-在所有 import 之前添加 `.env` 语句，导入项目级全局变量：
+可以在 import 之前添加 `.env` 语句，导入项目级全局变量：
 
 ```bash
 #!/usr/bin/env bash
@@ -100,10 +100,10 @@ cmd_example() {
     local name force_flag=""
     name="$(args.get "-n" "--name")" || name=""
     args.has "-f" "--force" && force_flag="--force"
-    
+
     # 合并参数获取和自然数验证
     local limit="$(args.get "-l" "--limit")" && string.natural.check "$limit" || limit="10"
-    
+
     # 合并参数获取和枚举验证
     local type="$(args.get "-t" "--type")" && array.contains VALID_TYPES "$type" || type=""
 }
