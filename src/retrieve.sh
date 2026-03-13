@@ -6,7 +6,6 @@ VERSION="0.1.0"
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$PROJECT_ROOT/lib/std/import.sh"
 
-.env
 import std/string
 import std/array
 import core/log
@@ -27,6 +26,7 @@ main() {
 	args.add_subcommand "fetch" "查看普通网页" "cmd_fetch"
 	args.add_subcommand "github" "GitHub调试信息检索" "cmd_github"
 	args.add_subcommand "hackernews" "Hacker News 技术新闻检索" "cmd_hackernews"
+	args.add_subcommand "stackoverflow" "Stack Overflow 技术问答检索" "cmd_stackoverflow"
 	args.add_subcommand "exa" "Exa AI 网络搜索" "cmd_exa_search"
 	args.process "$@"
 	args.has "-v" "--version" && usage.version && exit 0
@@ -113,18 +113,18 @@ cmd_hackernews() {
 	local -a query_params=("query=$search_query" "hitsPerPage=$limit")
 	[[ -n $tags ]] && query_params+=("tags=$tags")
 	case "$period" in
-	"last24h")
-		local timestamp=$(($(date +%s) - 86400))
-		query_params+=("numericFilters=created_at_i>$timestamp")
-		;;
-	"pastweek")
-		local timestamp=$(($(date +%s) - 604800))
-		query_params+=("numericFilters=created_at_i>$timestamp")
-		;;
-	"pastmonth")
-		local timestamp=$(($(date +%s) - 2629743))
-		query_params+=("numericFilters=created_at_i>$timestamp")
-		;;
+		"last24h")
+			local timestamp=$(($(date +%s) - 86400))
+			query_params+=("numericFilters=created_at_i>$timestamp")
+			;;
+		"pastweek")
+			local timestamp=$(($(date +%s) - 604800))
+			query_params+=("numericFilters=created_at_i>$timestamp")
+			;;
+		"pastmonth")
+			local timestamp=$(($(date +%s) - 2629743))
+			query_params+=("numericFilters=created_at_i>$timestamp")
+			;;
 	esac
 	local response
 	response=$(requests.get "/search" "${query_params[@]}")
@@ -154,6 +154,58 @@ cmd_hackernews() {
     (.created_at // "") + "\t" +
     (.objectID // "") + "\t" +
     (._tags[0] // "story")')
+	[[ $displayed_count -eq 0 ]] && echo "没有找到相关结果"
+}
+
+cmd_stackoverflow() {
+	args.init "Stack Overflow 技术问答检索"
+	args.add_options "tagged" "t" "按标签过滤（多个标签用分号分隔）" "TAGS"
+	args.add_options "limit" "n" "返回结果数量（默认 20，最大 100）" "NUMBER"
+	args.add_options "ARG" "query" "搜索关键词（必需，在标题中搜索）"
+
+	args.process "$@"
+
+	local tagged="$(args.get "-t" "--tagged")" || tagged=""
+	local limit="$(args.get "-n" "--limit")" && string.natural.check "$limit" || limit="20"
+	declare -n position_args=$(args.args)
+	local search_query="${position_args[*]}"
+
+	[[ -z $search_query ]] && log.error "请提供要搜索的关键词" && exit 1
+	[[ $limit -gt 100 ]] && limit=100
+
+	requests.init
+	requests.base_url "https://api.stackexchange.com/2.3"
+	log.info "搜索: $search_query"
+	local -a query_params=("intitle=$search_query" "site=stackoverflow" "pagesize=$limit" "sort=relevance" "order=desc")
+	[[ -n $tagged ]] && query_params+=("tagged=$tagged")
+
+	local response
+	response=$(requests.get "/search" "${query_params[@]}")
+	requests.raise_for_status "$response"
+
+	response=$(requests.text "$response")
+	local items_count
+	items_count=$(echo "$response" | jq -r '.items | length')
+	[[ $items_count -eq 0 ]] && echo "没有找到包含 '$search_query' 的相关结果" && return 0
+	echo "Stack Overflow 搜索结果 (关键词: '$search_query'):"
+	echo "=================================================="
+	local displayed_count=0
+	while IFS=$'\t' read -r title link score view_count answer_count is_answered tags; do
+		((displayed_count++))
+		echo "$displayed_count. $title"
+		echo "   得分: $score | 浏览: $view_count | 回答: $answer_count | 已解决: $is_answered"
+		echo "   标签: $tags"
+		echo "   链接: $link"
+		echo ""
+		[[ $displayed_count -ge $limit ]] && break
+	done < <(echo "$response" | jq -r '.items[] |
+    (.title // "无标题") + "\t" +
+    (.link // "") + "\t" +
+    (.score // 0 | tostring) + "\t" +
+    (.view_count // 0 | tostring) + "\t" +
+    (.answer_count // 0 | tostring) + "\t" +
+    (if .is_answered then "是" else "否" end) + "\t" +
+    (.tags | join(",") // "")')
 	[[ $displayed_count -eq 0 ]] && echo "没有找到相关结果"
 }
 
