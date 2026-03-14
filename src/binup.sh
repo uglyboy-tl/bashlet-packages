@@ -10,13 +10,12 @@ source "$PROJECT_ROOT/lib/std/import.sh"
 import std/system
 import std/console
 import std/fs
-import core/pass
 import core/log
 import core/args
 import core/config
 import ext/requests
 
-: "${GITHUB_TOKEN:=$(pass.get "github")}"
+: "${GITHUB_TOKEN:=$(pass "github")}"
 
 get_package_property() { config.array.get "packages" "$1" "$2"; }
 

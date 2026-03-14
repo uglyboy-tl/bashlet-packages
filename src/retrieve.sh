@@ -8,7 +8,6 @@ source "$PROJECT_ROOT/lib/std/import.sh"
 
 import std/string
 import std/array
-import core/pass
 import core/log
 import core/args
 import core/usage
@@ -18,7 +17,7 @@ DEFUDDLE_BASE_URL="https://defuddle.md"
 declare -ga EXA_VALID_TYPES=("neural" "keyword" "hybrid" "fast" "deep" "deep-reasoning" "deep-max" "magic" "instant")
 declare -ga EXA_VALID_CATEGORIES=("company" "research paper" "news" "tweet" "personal site" "financial report" "people")
 declare -ga HN_VALID_TAGS=("story" "comment" "poll" "pollopt" "show_hn" "ask_hn" "front_page")
-: "${EXA_API_KEY:=$(pass.get "exa")}"
+: "${EXA_API_KEY:=$(pass "exa")}"
 
 main() {
 	args.name "retrieve"
