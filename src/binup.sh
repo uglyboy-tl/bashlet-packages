@@ -220,6 +220,7 @@ cmd_list() {
 
 		[[ $current_version == "$latest_version" ]] && console.item.end "状态: $POWERLINE_OK 已是最新" || console.item.end "状态: $POWERLINE_STAR 有新版本 $latest_version"
 	done
+	return 0
 }
 
 cmd_update() {
@@ -273,6 +274,8 @@ cmd_update() {
 	[[ $has_updates == "true" ]] && {
 		console.footer "运行 \`$_USAGE_SCRIPT_FILENAME upgrade\` 下载更新"
 	}
+
+	return 0
 }
 
 cmd_upgrade() {
@@ -354,6 +357,8 @@ cmd_upgrade() {
 	local total=${#packages_to_upgrade[@]}
 	local updated=$((total - packages_skipped))
 	((total > 0)) && console.footer "共 $total 个包，$updated 个已更新，$packages_skipped 个跳过"
+
+	return 0
 }
 
 # Command: install - 安装已下载的包
