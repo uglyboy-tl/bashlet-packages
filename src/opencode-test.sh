@@ -21,7 +21,7 @@ JOBS=4
 OUTPUT="${OPENCODE_TEST_OUTPUT:-doc}"
 INPUT="${OUTPUT}"
 TIMEOUT=30
-MODEL="opencode/gpt-5-nano"
+MODEL="deepseek/deepseek-chat"
 AUTOGRADE=false
 
 # Runtime variables
