@@ -128,7 +128,7 @@ _do_install_package() {
 	local package="$1"
 
 	current_version=$(get_package_property "$package" "current_version")
-	[[ -z $current_version ]] && console.item.title 1 "$package: 未下载，请先运行 upgrade" && return 1
+	[[ -z $current_version ]] && console.item.title 1 "$package: 未下载，请先运行 \`$_USAGE_SCRIPT_FILENAME upgrade\`" && return 1
 
 	file_extension=$(get_package_property "$package" "file_extension")
 	binary_name=$(get_package_property "$package" "binary_name")
@@ -209,8 +209,8 @@ cmd_list() {
 		file_path="$SETTINGS_DOWNLOAD_DIR/${package}-${current_version}${file_extension:+.$file_extension}"
 
 		console.item.title 0 "$POWERLINE_STAR $package"
-		[[ -z $latest_version ]] && console.item.end "状态: $POWERLINE_WARN 运行 \'update\' 获取版本信息" && continue
-		[[ -z $current_version ]] || [[ ! -f $file_path ]] && console.item.mid "状态: $POWERLINE_COG 未下载 (最新: $latest_version)" && console.item.end "运行 \`upgrade $package\` 下载" && continue
+		[[ -z $latest_version ]] && console.item.end "状态: $POWERLINE_WARN 运行 \`$_USAGE_SCRIPT_FILENAME update\` 获取版本信息" && continue
+		[[ -z $current_version ]] || [[ ! -f $file_path ]] && console.item.mid "状态: $POWERLINE_COG 未下载 (最新: $latest_version)" && console.item.end "运行 \`$_USAGE_SCRIPT_FILENAME upgrade $package\` 下载" && continue
 
 		# 使用 stat 直接格式化时间输出：YYYY-MM-DD HH:MM:SS
 		download_time=$(stat -c "%.19y" "$file_path" 2> /dev/null || stat -c "%y" "$file_path" 2> /dev/null | cut -d'.' -f1)
@@ -271,7 +271,7 @@ cmd_update() {
 	done
 
 	[[ $has_updates == "true" ]] && {
-		console.footer "运行 \`./bin-updater.sh upgrade\` 下载更新"
+		console.footer "运行 \`$_USAGE_SCRIPT_FILENAME upgrade\` 下载更新"
 	}
 }
 
@@ -313,19 +313,19 @@ cmd_upgrade() {
 		download_url=$(get_package_property "$package" "download_url")
 
 		if [[ -z $latest_version ]]; then
-			console.item.title 1 "$package: 没有云端信息，请先运行 'update'"
+			console.item.title 1 "$package: 没有云端信息，请先运行 \`$_USAGE_SCRIPT_FILENAME update\`"
 			continue
 		fi
 
 		if [[ -z $download_url ]]; then
-			console.item.title 1 "$package: 没有下载链接，请先运行 'update'"
+			console.item.title 1 "$package: 没有下载链接，请先运行 \`$_USAGE_SCRIPT_FILENAME update\`"
 			continue
 		fi
 
 		if [[ -z $current_version ]]; then
 			console.item.title 1 "$package: 未下载，将下载 $latest_version"
 		elif [[ $current_version != "$latest_version" ]]; then
-			console.item.title 1 "$package: 有新版本 $current_version -> $latest_version"
+			console.item.title 1 "$package: 有新版本 $current_version $POWERLINE_POINTING_ARROW $latest_version"
 		else
 			console.item.title 1 "$package: 已是最新版本 $current_version"
 			((packages_skipped++)) || true
