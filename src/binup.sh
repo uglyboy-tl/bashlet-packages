@@ -19,6 +19,39 @@ import ext/requests
 
 get_package_property() { config.array.get "packages" "$1" "$2"; }
 
+# 缓存默认注册包列表（优化：只缓存最终结果）
+declare -ga _DEFAULT_REGISTERED_PACKAGES_CACHE=()
+declare -g _DEFAULT_PACKAGES_CACHE_CHECKED=false
+
+# 检查包是否在默认配置中有 repo 属性（即是否为合法的注册包）
+is_package_in_default_config_with_repo() {
+	local package="$1"
+
+	# 直接检查配置中是否存在该包且有 repo 属性
+	config.has "packages.$package.repo"
+}
+
+# 获取所有在默认配置中注册的 packages 列表（有 repo 属性的）
+get_default_registered_packages() {
+	# 如果缓存未填充，则填充缓存
+	if [[ ${_DEFAULT_PACKAGES_CACHE_CHECKED} == "false" ]]; then
+		local pkg_key
+		# 清空数组以防万一
+		_DEFAULT_REGISTERED_PACKAGES_CACHE=()
+
+		for pkg_key in $(config.array.items "packages"); do
+			if config.has "packages.$pkg_key.repo"; then
+				_DEFAULT_REGISTERED_PACKAGES_CACHE+=("$pkg_key")
+			fi
+		done
+
+		_DEFAULT_PACKAGES_CACHE_CHECKED=true
+	fi
+
+	# 输出缓存的结果
+	printf '%s\n' "${_DEFAULT_REGISTERED_PACKAGES_CACHE[@]}"
+}
+
 # 架构正则映射
 _get_arch_regex() {
 	case "$(system.arch)" in
@@ -201,7 +234,10 @@ cmd_list() {
 
 	console.section "已下载的包"
 
-	for package in $(config.array.items "packages"); do
+	local -a registered_packages
+	mapfile -t registered_packages < <(get_default_registered_packages)
+
+	for package in "${registered_packages[@]}"; do
 		current_version=$(get_package_property "$package" "current_version")
 		latest_version=$(get_package_property "$package" "latest_version")
 		file_extension=$(get_package_property "$package" "file_extension")
@@ -235,8 +271,10 @@ cmd_update() {
 	console.section "检查更新"
 
 	local has_updates=false
+	local -a registered_packages
+	mapfile -t registered_packages < <(get_default_registered_packages)
 
-	for package in $(config.array.items "packages"); do
+	for package in "${registered_packages[@]}"; do
 		# 批量获取包属性
 		local -a props=()
 		for prop in repo version_type file_pattern file_extension current_version; do
@@ -290,14 +328,16 @@ cmd_upgrade() {
 	local packages_to_upgrade=()
 
 	if [[ ${#target_packages[@]} -eq 0 ]]; then
-		IFS=" " read -r -a packages_to_upgrade <<< "$(config.array.items "packages")"
+		# 只获取在默认配置中注册的包
+		mapfile -t packages_to_upgrade < <(get_default_registered_packages)
 	else
-		local all_packages
-		all_packages=$(config.array.items "packages")
+		# 验证指定的包是否在默认配置中注册
 		for package in "${target_packages[@]}"; do
-			if [[ " $all_packages " != *" $package "* ]]; then
+			if ! is_package_in_default_config_with_repo "$package"; then
 				log.error "Unknown package: $package"
-				log.error "Available packages: $all_packages"
+				local available_packages
+				available_packages=$(get_default_registered_packages)
+				log.error "Available packages: $available_packages"
 				exit 1
 			fi
 			packages_to_upgrade+=("$package")
@@ -374,10 +414,11 @@ cmd_install() {
 	local success_count=0 fail_count=0
 
 	for package in "${target_packages[@]}"; do
-		read -ra packages < <(config.array.items "packages")
-		if ! printf '%s\n' "${packages[@]}" | grep -q "^${package}$"; then
+		if ! is_package_in_default_config_with_repo "$package"; then
 			log.error "Unknown package: $package"
-			log.error "Available packages: $(config.array.items "packages")"
+			local available_packages
+			available_packages=$(get_default_registered_packages)
+			log.error "Available packages: $available_packages"
 			exit 1
 		elif _do_install_package "$package"; then
 			((success_count++))
