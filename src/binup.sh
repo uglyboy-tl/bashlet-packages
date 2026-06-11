@@ -368,7 +368,7 @@ cmd_upgrade() {
 		if [[ -z $current_version ]]; then
 			console.item.title 1 "$package: 未下载，将下载 $latest_version"
 		elif [[ $current_version != "$latest_version" ]]; then
-			console.item.title 1 "$package: 有新版本 $current_version $POWERLINE_POINTING_ARROW $latest_version"
+			console.item.title 1 "$package: 有新版本 $current_version $POWERLINE_POINTING_ARROW  $latest_version"
 		else
 			console.item.title 1 "$package: 已是最新版本 $current_version"
 			((packages_skipped++)) || true
