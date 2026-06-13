@@ -7,7 +7,7 @@ VERSION="0.2.0"
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$PROJECT_ROOT/lib/std/import.sh"
 
-.env "$(dirname "${BASH_SOURCE[0]}")"
+.env
 
 import std/string
 import std/array
