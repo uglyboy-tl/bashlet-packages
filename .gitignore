@@ -1,4 +1,5 @@
 .worktrees
+.opencode
 .vscode
 .env
 /build
