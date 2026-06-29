@@ -2,7 +2,7 @@
 
 load 'test_helper/common-setup'
 
-TEST_PROVIDERS=(doubao)
+TEST_PROVIDERS=(agnes)
 
 setup() {
   _common_setup
