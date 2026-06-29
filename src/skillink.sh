@@ -464,12 +464,11 @@ cmd_search() {
 		return
 	}
 
-	console.stdout "Search results for '${keyword}':"
 	local name source installs
 	local -a left=() right=()
 	while IFS=$'\t' read -r name source installs; do
-		left+=("  ${name}")
-		right+=("(${source})  ${installs} installs")
+		left+=("  ${CYAN}${Bold}${name}${NC} ${Dim}(${source})${NC}")
+		right+=("${installs}")
 	done < <(yq eval '.skills[] | [.name, .source, (.installs | tostring)] | @tsv' - <<< "$body")
 
 	local max_width=0 w
