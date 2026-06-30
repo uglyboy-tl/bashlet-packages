@@ -2,7 +2,7 @@
 # shellcheck disable=SC2034
 
 set -euo pipefail
-SCRIPT_NAME="SkillInk"
+SCRIPT_NAME="skm"
 VERSION="0.1.0"
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$PROJECT_ROOT/lib/std/import.sh"
@@ -20,16 +20,16 @@ import ext/requests
 
 # ── Initialization ──
 
-_ensure_skillink_home() {
+_ensure_skm_home() {
 	local home
 	home="$(path.data_dir)"
 	if [[ ! -d $home ]]; then
 		mkdir -p "$home"
 	fi
 	if ! git -C "$home" rev-parse --git-dir > /dev/null 2>&1; then
-		log.info "Initializing skillink home at ${home}..."
+		log.info "Initializing skm home at ${home}..."
 		git init "$home"
-		log.info "skillink home initialized"
+		log.info "skm home initialized"
 	fi
 }
 
@@ -68,7 +68,7 @@ _load_config() {
 		local agents agent_count=0
 		agents="$(_get_agent_names)"
 		agents="$(string.trim "$agents")"
-		for a in $agents; do ((agent_count++)); done
+		for a in $agents; do ((++agent_count)); done
 		if ((agent_count == 1)); then
 			config.set "default_agent" "$agents"
 		else
@@ -101,14 +101,20 @@ _validate_repo() {
 		}
 		return 0
 	fi
-	if [[ $input != *"://"* && $input != *"@"* ]]; then
-		if command -v gh &> /dev/null; then
-			gh repo view "$input" --json name > /dev/null 2>&1 || {
-				log.error "GitHub repository not found: $input"
-				return 1
-			}
-			return 0
-		fi
+	if [[ $input == *"://"* || $input == *"@"* ]]; then
+		log.error "Use owner/repo format instead of full URL: $input"
+		return 1
+	fi
+	[[ $input =~ ^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$ ]] || {
+		log.error "Invalid format: '${input}'. Expected owner/repo"
+		return 1
+	}
+	if command -v gh &> /dev/null; then
+		gh repo view "$input" --json name > /dev/null 2>&1 || {
+			log.error "GitHub repository not found: $input"
+			return 1
+		}
+		return 0
 	fi
 	local url
 	url="$(_expand_repo_url "$input")"
@@ -243,16 +249,26 @@ _add_source() {
 
 cmd_add() {
 	args.init "add - 添加 Skills 源仓库"
-	args.add_options "arg" "源仓库名称" "STRING"
-	args.add_options "arg" "源仓库 URL" "STRING"
+	args.add_options "name" "n" "源仓库名称（可选，默认使用仓库名）" "STRING"
+	args.add_options "arg" "<owner/repo>" "STRING"
 	args.process "$@"
 
 	local -n args_arr=$(args.args)
-	local name="${args_arr[0]:-}" repo="${args_arr[1]:-}"
-	[[ -z $name || -z $repo ]] && {
-		log.error "Usage: skillink add <name> <repo>"
-		exit 1
+	local repo="${args_arr[0]:-}"
+	[[ -z $repo ]] && {
+		args.show_help; exit 1
 	}
+
+	local name
+	name="$(args.get "-n" "--name")" || name=""
+	if [[ -z $name ]]; then
+		if [[ $repo == "/"* || $repo == "."* ]]; then
+			name="$(basename "$repo")"
+		else
+			name="${repo##*/}"
+		fi
+	fi
+	[[ -z $name ]] && { log.error "Could not determine source name from '${repo}'"; exit 1; }
 
 	if config.array.has "sources" "$name" || [[ -d "$(path.data_dir)/skills/${name}" ]]; then
 		log.warn "Source '${name}' already exists, skipping"
@@ -274,8 +290,7 @@ cmd_remove() {
 	local -n args_arr=$(args.args)
 	local name="${args_arr[0]:-}"
 	[[ -z $name ]] && {
-		log.error "Usage: skillink remove <name>"
-		exit 1
+		args.show_help; exit 1
 	}
 
 	config.array.has "sources" "$name" || {
@@ -442,8 +457,7 @@ cmd_search() {
 	local -n args_arr=$(args.args)
 	local keyword="${args_arr[0]:-}"
 	[[ -z $keyword ]] && {
-		log.error "Usage: skillink search <keyword>"
-		exit 1
+		args.show_help; exit 1
 	}
 
 	local response
@@ -526,7 +540,7 @@ _find_skill_dir() {
 
 cmd_install() {
 	args.init "install - 安装 Skill"
-	args.add_options "source" "s" "指定来源仓库" "STRING"
+	args.add_options "source" "s" "源仓库 <owner/repo>" "STRING"
 	args.add_options "project" "p" "指定项目目录（项目级安装）" "STRING"
 	args.add_options "user" "u" "安装到用户级目录"
 	args.add_options "agent" "a" "指定 Agent" "STRING"
@@ -536,8 +550,7 @@ cmd_install() {
 	local -n args_arr=$(args.args)
 	local skill="${args_arr[0]:-}"
 	[[ -z $skill ]] && {
-		log.error "Usage: skillink install <skill> [options]"
-		exit 1
+		args.show_help; exit 1
 	}
 
 	local source_filter project_path agent
@@ -611,8 +624,7 @@ cmd_uninstall() {
 	local -n args_arr=$(args.args)
 	local skill="${args_arr[0]:-}"
 	[[ -z $skill ]] && {
-		log.error "Usage: skillink uninstall <skill> [options]"
-		exit 1
+		args.show_help; exit 1
 	}
 
 	local agent
@@ -695,8 +707,8 @@ cmd_status() {
 	names="$(_get_source_names)"
 	names="$(string.trim "$names")"
 	for name in $names; do
-		((source_count++))
-		[[ -d "${home}/skills/${name}" ]] && ((cloned_count++))
+		((++source_count))
+		[[ -d "${home}/skills/${name}" ]] && ((++cloned_count))
 	done
 	console.stdout "${Bold}Sources:${NC} ${source_count} configured, ${cloned_count} cloned"
 	for name in $names; do
@@ -783,20 +795,20 @@ _show_agents() {
 main() {
 	args.init "Skills 管理器 — 管理 AI 编程代理的 Skills"
 	args.add_options "version" "v" "显示版本信息"
+	args.add_options "arg" "源仓库名称（可选，仅显示该源的已安装技能）" "STRING"
 	args.add_subcommand "add" "添加 Skills 源仓库" "cmd_add"
 	args.add_subcommand "remove" "移除 Skills 源仓库" "cmd_remove"
 	args.add_subcommand "update" "更新 Skills 源仓库" "cmd_update"
-	args.add_subcommand "skills" "列出所有可用 Skills" "cmd_ls"
+	args.add_subcommand "list" "列出所有可用 Skills" "cmd_ls"
 	args.add_subcommand "search" "搜索 Skills" "cmd_search"
 	args.add_subcommand "install" "安装 Skill" "cmd_install"
 	args.add_subcommand "uninstall" "卸载 Skill" "cmd_uninstall"
-	args.add_subcommand "status" "查看安装状态" "cmd_status"
 
 	config.register "log_level" "info"
 
 	ansi.enable || true
 
-	_ensure_skillink_home
+	_ensure_skm_home
 	_ensure_config
 	_load_config
 
@@ -804,6 +816,10 @@ main() {
 
 	args.process "$@"
 	args.has "-v" "--version" && usage.version && exit 0
+
+	# 无子命令时默认显示 status
+	local -n _args=$(args.args)
+	[[ -z $_ARGS_CURRENT_SUBCOMMAND ]] && cmd_status "${_args[@]}" && exit 0
 }
 
 if [[ ${BASH_SOURCE[0]} == "${0}" ]]; then
