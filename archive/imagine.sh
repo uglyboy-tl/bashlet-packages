@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2034,SC2016
+# build:keep-env
 
 set -euo pipefail
 SCRIPT_NAME="Imagine"
@@ -15,7 +16,7 @@ import core/log
 import core/args
 import ext/requests
 
-declare -ga VALID_PROVIDERS=("openai" "google" "dashscope" "zai" "minimax" "doubao" "agnes")
+declare -ga VALID_PROVIDERS=("openai" "google" "dashscope" "zai" "minimax" "doubao" "agnes" "openrouter")
 
 declare -gA PROVIDER_DEFAULT_MODEL
 PROVIDER_DEFAULT_MODEL["openai"]="gpt-image-1"
@@ -25,6 +26,7 @@ PROVIDER_DEFAULT_MODEL["zai"]="glm-image"
 PROVIDER_DEFAULT_MODEL["minimax"]="image-01"
 PROVIDER_DEFAULT_MODEL["doubao"]="doubao-seedream-5-0-260128"
 PROVIDER_DEFAULT_MODEL["agnes"]="agnes-image-2.1-flash"
+PROVIDER_DEFAULT_MODEL["openrouter"]="openai/gpt-image-1"
 
 # 使用 --ref 时的默认模型（部分模型不支持参考图）
 declare -gA PROVIDER_DEFAULT_REF_MODEL
@@ -33,6 +35,7 @@ PROVIDER_DEFAULT_REF_MODEL["minimax"]="image-01"
 PROVIDER_DEFAULT_REF_MODEL["dashscope"]="wan2.7-image-pro"
 PROVIDER_DEFAULT_REF_MODEL["doubao"]="doubao-seedream-5-0-260128"
 PROVIDER_DEFAULT_REF_MODEL["agnes"]="agnes-image-2.1-flash"
+PROVIDER_DEFAULT_REF_MODEL["openrouter"]="openai/gpt-image-1"
 
 declare -gA PROVIDER_API_HOST
 PROVIDER_API_HOST["openai"]="api.openai.com"
@@ -42,6 +45,7 @@ PROVIDER_API_HOST["zai"]="api.z.ai"
 PROVIDER_API_HOST["minimax"]="api.minimaxi.com"
 PROVIDER_API_HOST["doubao"]="ark.cn-beijing.volces.com"
 PROVIDER_API_HOST["agnes"]="apihub.agnes-ai.com"
+PROVIDER_API_HOST["openrouter"]="openrouter.ai"
 
 declare -gA PROVIDER_XGET_PREFIX
 PROVIDER_XGET_PREFIX["openai"]="openai"
@@ -51,6 +55,7 @@ PROVIDER_XGET_PREFIX["zai"]=""
 PROVIDER_XGET_PREFIX["minimax"]=""
 PROVIDER_XGET_PREFIX["doubao"]=""
 PROVIDER_XGET_PREFIX["agnes"]=""
+PROVIDER_XGET_PREFIX["openrouter"]=""
 
 declare -gA PROVIDER_API_KEY_ENV
 PROVIDER_API_KEY_ENV["openai"]="OPENAI_API_KEY"
@@ -60,6 +65,7 @@ PROVIDER_API_KEY_ENV["zai"]="ZAI_API_KEY"
 PROVIDER_API_KEY_ENV["minimax"]="MINIMAX_API_KEY"
 PROVIDER_API_KEY_ENV["doubao"]="ARK_API_KEY"
 PROVIDER_API_KEY_ENV["agnes"]="AGNES_API_KEY"
+PROVIDER_API_KEY_ENV["openrouter"]="OPENROUTER_API_KEY"
 
 declare -gA ASPECT_RATIO_SIZES=(
 	["1:1"]="1024*1024"
@@ -352,6 +358,25 @@ _provider_generate() {
 			fi
 			[[ -n $seed ]] && body=$(echo "$body" | jq --argjson seed "$seed" '.seed = $seed')
 			;;
+		openrouter)
+			local sz="${size//\*/x}"
+			api_path="/api/v1/images"
+			if [[ -n $ref ]]; then
+				local refs
+				refs=$(_ref_build_array "$ref" '. += [{type: "image_url", image_url: {url: ("data:\($mime);base64," + $b64)}}]') || return 1
+				body=$(echo "$refs" | jq --arg m "$model" --arg p "$prompt" --argjson n "$count" --arg s "$sz" '{
+          model: $m, prompt: $p, n: $n, size: $s, output_format: "png",
+          input_references: .
+        }')
+			else
+				body=$(jq -n --arg m "$model" --arg p "$prompt" --argjson n "$count" --arg s "$sz" '{
+          model: $m, prompt: $p, n: $n, size: $s, output_format: "png"
+        }')
+			fi
+			[[ -n $quality ]] && body=$(echo "$body" | jq --arg q "$quality" '.quality = $q')
+			[[ -n $seed ]] && body=$(echo "$body" | jq --argjson seed "$seed" '.seed = $seed')
+			is_base64=true
+			;;
 	esac
 
 	log.info "[$provider] model: $model / size: ${size:-auto} / n: $count"
@@ -383,6 +408,7 @@ _provider_generate() {
 		minimax) images=$(requests.json "$response" '(try .data.image_base64[] catch empty) // (try .data.image_urls[] catch empty) // empty') ;;
 		doubao) images=$(requests.json "$response" '.data[].url // empty') ;;
 		agnes) images=$(requests.json "$response" '.data[].b64_json // .data[].url // empty') ;;
+		openrouter) images=$(requests.json "$response" '.data[].b64_json // empty') ;;
 	esac
 
 	[[ -z $images ]] && {
@@ -499,6 +525,9 @@ _list_models_from_api() {
 		agnes)
 			requests.json "$(requests.get "/v1/models")" '.data[].id | select(. | test("agnes-image")) | .'
 			;;
+		openrouter)
+			requests.json "$(requests.get "/api/v1/images/models")" '.data[].id'
+			;;
 	esac
 }
 
@@ -536,7 +565,7 @@ cmd_models() {
 		printf "  %s\n" "──────────────────────────────────────────"
 		local models=""
 		case $provider in
-			openai | google | dashscope | doubao | agnes)
+			openai | google | dashscope | doubao | agnes | openrouter)
 				models=$(_list_models_from_api "$provider") || models=""
 				;;
 			minimax)

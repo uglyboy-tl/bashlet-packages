@@ -17,17 +17,17 @@ teardown() {
 # ── 错误处理（不耗 tokens） ──
 
 @test "error - 缺少提示词" {
-  run bash src/imagine.sh --provider agnes
+  run bash archive/imagine.sh --provider agnes
   [[ $status -ne 0 ]]
 }
 
 @test "error - 无效提供商" {
-  run bash src/imagine.sh --provider nonexistent -p "test"
+  run bash archive/imagine.sh --provider nonexistent -p "test"
   [[ $status -ne 0 ]]
 }
 
 @test "error - 不存在的提示词文件" {
-  run bash src/imagine.sh -P /nonexistent/file.txt
+  run bash archive/imagine.sh -P /nonexistent/file.txt
   [[ $status -ne 0 ]]
 }
 
@@ -65,7 +65,7 @@ _check_ratio() {
   for p in "${TEST_PROVIDERS[@]}"; do
     local outfile="$TEST_DIR/${p}_combo.png"
 
-    run bash src/imagine.sh \
+    run bash archive/imagine.sh \
       --provider "$p" \
       -p "a cute cat" \
       -s "1024x768" \
@@ -80,14 +80,14 @@ _check_ratio() {
 }
 
 @test "generate - 参考图" {
-  local refimg="$PROJECT_ROOT/test/assets/ref.png"
+  local refimg="$PROJECT_ROOT/archive/test/assets/ref.png"
 
   [[ -f $refimg ]] || skip "assets/ref.png not found"
 
   for p in "${TEST_PROVIDERS[@]}"; do
     local outfile="$TEST_DIR/${p}_ref.png"
 
-    run bash src/imagine.sh \
+    run bash archive/imagine.sh \
       --provider "$p" \
       -p "a cute cat" \
       --ref "$refimg" \
