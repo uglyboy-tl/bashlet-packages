@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# build:keep-env
 
 set -euo pipefail
 
@@ -9,6 +10,8 @@ VERSION="1.0.0"
 # Project setup
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$PROJECT_ROOT/lib/std/import.sh"
+
+.env
 
 import core/log
 import core/args

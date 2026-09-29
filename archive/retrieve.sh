@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
+# build:keep-env
 
 set -euo pipefail
 SCRIPT_NAME="Retrieve"
 VERSION="0.1.0"
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$PROJECT_ROOT/lib/std/import.sh"
+
+.env
 
 import std/string
 import std/array

@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2034
+# build:keep-env
 
 set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$PROJECT_ROOT/lib/std/import.sh"
+
+.env
 
 import core/log
 import core/args
