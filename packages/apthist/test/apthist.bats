@@ -34,7 +34,7 @@ End-Date: $d4  13:00:01
 EOF
 }
 
-_apt() { run bash src/apthist.sh -l "$LOG" "$@"; }
+_apt() { run bash apthist.sh -l "$LOG" "$@"; }
 
 @test "apthist: 默认只列出手动安装且仍在装的包" {
 	_apt -d 3650

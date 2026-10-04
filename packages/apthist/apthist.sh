@@ -3,8 +3,11 @@
 
 set -euo pipefail
 SCRIPT_NAME="AptHist"
-PROJECT_ROOT="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$PROJECT_ROOT/lib/std/import.sh"
+
+# 包目录的本地环境（在 import 之前加载：core/log 在顶层读 _LOG_LEVEL）
+.env
 
 import std/ansi
 import std/string
