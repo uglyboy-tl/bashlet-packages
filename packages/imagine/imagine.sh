@@ -257,7 +257,8 @@ _provider_generate() {
 			;;
 		dashscope)
 			api_path="/api/v1/services/aigc/multimodal-generation/generation"
-			local sz="${size//\*/x}"
+			# dashscope 的 size 用星号分隔（如 1024*768），不能转成 x
+			local sz="$size"
 			if [[ -n $ref ]]; then
 				local content
 				content=$(_ref_build_array "$ref" '. += [{image: ("data:\($mime);base64," + $b64)}]') || return 1
@@ -359,7 +360,15 @@ _provider_generate() {
 			[[ -n $seed ]] && body=$(echo "$body" | jq --argjson seed "$seed" '.seed = $seed')
 			;;
 		openrouter)
-			local sz="${size//\*/x}"
+			# openrouter 仅接受 1024x1024 / 1024x1536 / 1536x1024 / auto，按宽高比映射
+			local sz w="${size%%\**}" h="${size#*\*}"
+			if ((w == h)); then
+				sz="1024x1024"
+			elif ((w > h)); then
+				sz="1536x1024"
+			else
+				sz="1024x1536"
+			fi
 			api_path="/api/v1/images"
 			if [[ -n $ref ]]; then
 				local refs
@@ -407,7 +416,8 @@ _provider_generate() {
 		zai) images=$(requests.json "$response" '.data[].url // empty') ;;
 		minimax) images=$(requests.json "$response" '(try .data.image_base64[] catch empty) // (try .data.image_urls[] catch empty) // empty') ;;
 		doubao) images=$(requests.json "$response" '.data[].url // empty') ;;
-		agnes) images=$(requests.json "$response" '.data[].b64_json // .data[].url // empty') ;;
+		# Agnes 的 b64_json 可能是空串（非 null，不会触发 // 回退），需先排除再回退到 url
+		agnes) images=$(requests.json "$response" '.data[] | (.b64_json | select(. != "")) // (.url | select(. != ""))') ;;
 		openrouter) images=$(requests.json "$response" '.data[].b64_json // empty') ;;
 	esac
 
@@ -415,6 +425,9 @@ _provider_generate() {
 		log.error "No images in response"
 		return 1
 	}
+
+	# 实际返回可能不遵循请求的 response_format（Agnes 的 b64_json 为空串时只给 url）
+	$is_base64 && [[ $images == http* ]] && is_base64=false
 
 	if $is_base64; then
 		local i=0
