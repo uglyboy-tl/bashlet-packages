@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# tools/test - 跑指定包的测试；不带参数则跑全部包
+#
+# 用法:
+#   tools/test             # 全部包
+#   tools/test binup       # 单包
+#   tools/test binup apthist
+
+set -euo pipefail
+
+TOOLS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(dirname "$TOOLS_DIR")"
+BATS="$ROOT/test/bats/bin/bats"
+PACKAGES="$ROOT/packages"
+
+# 存档包：只保留历史代码，不计入全量测试（可用 tools/test archive 显式跑）
+declare -ra _ARCHIVED=(archive)
+
+_is_archived() {
+	local pkg="$1" a
+	for a in "${_ARCHIVED[@]}"; do
+		[[ $pkg == "$a" ]] && return 0
+	done
+	return 1
+}
+
+_collect() {
+	local pkg
+	for pkg in "$PACKAGES"/*/; do
+		pkg="$(basename "$pkg")"
+		_is_archived "$pkg" && continue
+		find "$PACKAGES/$pkg/test" -maxdepth 1 -name '*.bats' 2> /dev/null
+	done | sort
+}
+
+main() {
+	local -a targets=()
+	if (($#)); then
+		local pkg
+		for pkg in "$@"; do
+			[[ -d $PACKAGES/$pkg ]] || {
+				echo "没有这个包: $pkg" >&2
+				exit 1
+			}
+			mapfile -t -O "${#targets[@]}" targets < <(find "$PACKAGES/$pkg/test" -maxdepth 1 -name '*.bats' | sort)
+		done
+	else
+		mapfile -t targets < <(_collect)
+	fi
+
+	((${#targets[@]})) || {
+		echo "没有找到测试文件" >&2
+		exit 1
+	}
+
+	echo "测试 ${#targets[@]} 个文件: ${targets[*]##*/}"
+	exec "$BATS" "${targets[@]}"
+}
+
+main "$@"

@@ -2,7 +2,3 @@
 .opencode
 .vscode
 .env
-/build
-/config.toml
-/*.sh
-/output

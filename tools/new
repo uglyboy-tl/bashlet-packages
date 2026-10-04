@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+# tools/new - 新建包骨架（脚本 + README + 测试），并建立 bashlet 链接
+#
+# 用法: tools/new <包名>
+
+set -euo pipefail
+
+TOOLS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(dirname "$TOOLS_DIR")"
+PACKAGES="$ROOT/packages"
+
+main() {
+	local pkg="${1:-}"
+	[[ -n $pkg ]] || {
+		echo "用法: tools/new <包名>" >&2
+		exit 1
+	}
+	[[ $pkg =~ ^[a-z][a-z0-9-]*$ ]] || {
+		echo "包名只允许小写字母、数字与连字符: $pkg" >&2
+		exit 1
+	}
+
+	local dir="$PACKAGES/$pkg"
+	[[ -e $dir ]] && {
+		echo "包已存在: $pkg" >&2
+		exit 1
+	}
+
+	local title="${pkg^}"
+	mkdir -p "$dir/test"
+
+	cat > "$dir/$pkg.sh" << EOF
+#!/usr/bin/env bash
+set -euo pipefail
+SCRIPT_NAME="$title"
+VERSION="0.1.0"
+PROJECT_ROOT="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
+source "\$PROJECT_ROOT/lib/std/import.sh"
+
+import core/args
+import core/log
+
+cmd_hello() {
+	args.init
+	args.process "\$@"
+
+	log.info "$pkg: hello"
+}
+
+main() {
+	args.init "$title - 简述这个包做什么"
+
+	args.add_options "version" "v" "显示版本信息"
+	args.add_subcommand "hello" "示例子命令" "cmd_hello"
+
+	args.process "\$@"
+	args.has "-v" "--version" && usage.version && exit 0
+}
+
+if [[ \${BASH_SOURCE[0]} == "\${0}" ]]; then main "\$@"; fi
+EOF
+
+	cat > "$dir/test/$pkg.bats" << EOF
+#!/usr/bin/env bats
+
+load 'test_helper/common-setup'
+
+setup() {
+	_common_setup
+	cd "\$PROJECT_ROOT"
+	source "\$PROJECT_ROOT/$pkg.sh"
+}
+
+@test "$pkg: --version 输出版本" {
+	run bash $pkg.sh --version
+	assert_success
+	assert_output --partial "$title"
+}
+EOF
+
+	# 构建产物不入库（每个包自己声明）
+	[[ -f $dir/.gitignore ]] || printf '/build\n' > "$dir/.gitignore"
+
+	cat > "$dir/README.md" << EOF
+# $pkg
+
+简述这个包做什么。
+
+## 用法
+
+\`\`\`bash
+tools/build $pkg      # 产出 packages/$pkg/build/$pkg
+tools/test $pkg       # 只跑这个包的测试
+\`\`\`
+EOF
+
+	"$TOOLS_DIR/install" > /dev/null
+	echo "已创建 packages/$pkg"
+	echo "  $pkg.sh            入口"
+	echo "  test/$pkg.bats     测试"
+	echo "  README.md          说明"
+}
+
+main "$@"

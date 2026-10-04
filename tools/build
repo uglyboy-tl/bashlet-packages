@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# tools/build - 把指定包构建成单文件，输出到 $OUTPUT_DIR/<包名>（缺省为 packages/<包名>/build/<包名>）
+#
+# 约定：包根下恰好一个 *.sh 是入口（名即包名），产物名也是包名。
+#
+# 用法: OUTPUT_DIR=/tmp/out tools/build binup
+
+set -euo pipefail
+
+TOOLS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(dirname "$TOOLS_DIR")"
+BASHLET="$ROOT/bashlet"
+PACKAGES="$ROOT/packages"
+
+main() {
+	local pkg="${1:-}"
+	[[ -n $pkg ]] || {
+		echo "用法: tools/build <包名>" >&2
+		exit 1
+	}
+
+	local dir="$PACKAGES/$pkg"
+	[[ -d $dir ]] || {
+		echo "没有这个包: $pkg" >&2
+		exit 1
+	}
+
+	local -a entries=()
+	mapfile -t entries < <(find "$dir" -maxdepth 1 -name '*.sh' | sort)
+	((${#entries[@]} == 1)) || {
+		echo "包根下需要恰好一个 *.sh 入口，实际找到 ${#entries[@]} 个" >&2
+		exit 1
+	}
+
+	# 产物目录：环境变量 > 包内本地环境文件 > 包内 build/
+	local out_dir="${OUTPUT_DIR:-}"
+	if [[ -z $out_dir && -f $dir/.env ]]; then
+		# shellcheck disable=SC1090
+		source "$dir/.env"
+		out_dir="${OUTPUT_DIR:-}"
+	fi
+	out_dir="${out_dir:-$dir/build}"
+
+	mkdir -p "$out_dir"
+	"$BASHLET/tools/build" "${entries[0]}" -o "$out_dir/$pkg"
+	echo "完成: $out_dir/$pkg"
+}
+
+main "$@"
