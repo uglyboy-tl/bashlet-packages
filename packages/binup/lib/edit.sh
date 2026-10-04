@@ -36,7 +36,7 @@ _create_default_config() {
 #   binary_name    = "<名称>"               # 归档内可执行文件名(单文件时可省略)
 download_dir = "downloads"
 log_level = "info"
-# registry_url = "https://github.com/uglyboy-tl/BashDev/raw/HEAD/packages/binup/registry.toml"  # 包目录 URL，search/add 使用
+# registry_url = "https://github.com/uglyboy-tl/bashlet-packages/raw/HEAD/packages/binup/registry.toml"  # 包目录 URL，search/add 使用
 # registry_ttl = "24"                              # 包目录缓存有效期（小时）
 EOF
 }

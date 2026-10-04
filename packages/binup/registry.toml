@@ -1,7 +1,7 @@
 # BinUp 公共包目录
 #
 # binup 默认从这个文件拉取包目录（BashDev 仓库的 raw 地址）：
-#   https://github.com/uglyboy-tl/BashDev/raw/HEAD/packages/binup/registry.toml
+#   https://github.com/uglyboy-tl/bashlet-packages/raw/HEAD/packages/binup/registry.toml
 # 换源优先级：BINUP_REGISTRY_URL 环境变量 > 配置里的 registry_url > 上面的默认值
 # 所以别人可以把自己的 registry.toml 放任意 URL，当第三方源用。
 #

@@ -10,7 +10,7 @@ source "$PROJECT_ROOT/lib/std/import.sh"
 # 包目录的本地环境（在 import 之前加载：core/log 在顶层读 _LOG_LEVEL）
 .env
 
-_DEFAULT_REGISTRY_URL="https://github.com/uglyboy-tl/BashDev/raw/HEAD/packages/binup/registry.toml"
+_DEFAULT_REGISTRY_URL="https://github.com/uglyboy-tl/bashlet-packages/raw/HEAD/packages/binup/registry.toml"
 
 import core/log
 import core/args
