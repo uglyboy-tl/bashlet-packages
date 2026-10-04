@@ -65,8 +65,20 @@ cmd_search() {
 			status=""
 		fi
 		console.layout.item.title 0 "$POWERLINE_STAR $name$status"
-		[[ -n $repo ]] && console.layout.item.mid "仓库: $repo"
-		[[ -n $description ]] && console.layout.item.mid "说明: $description"
+
+		local -a details=()
+		[[ -n $repo ]] && details+=("仓库: $repo")
+		[[ -n $description ]] && details+=("说明: $description")
+
+		local i
+		for ((i = 0; i < ${#details[@]}; i++)); do
+			if ((i == ${#details[@]} - 1)); then
+				console.layout.item.end "${details[i]}"
+			else
+				console.layout.item.mid "${details[i]}"
+			fi
+		done
+		((${#details[@]})) || echo ""
 	done
 	console.layout.footer "共 ${#hits[@]} 个包，运行 \`$_USAGE_SCRIPT_FILENAME add <包名>\` 添加到本地配置"
 	return 0

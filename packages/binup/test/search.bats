@@ -20,11 +20,18 @@ setup() {
 }
 
 
-@test "search: 关键词无匹配时不报错" {
-	_binup_seed_registry
+@test "search: 关键词无匹配时不报错" {	_binup_seed_registry
 
 	run bash binup.sh search zzzz
 	assert_success
 	assert_output --partial "没有匹配的包"
+}
+
+@test "search: 明细最后一行用结尾符号" {
+	_binup_seed_registry
+
+	run bash binup.sh search lf
+	assert_success
+	assert_output --partial "└─ 说明"
 }
 
