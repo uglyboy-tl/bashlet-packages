@@ -8,7 +8,7 @@ SCRIPT_NAME="OpenCode-Test"
 VERSION="1.0.0"
 
 # Project setup
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$PROJECT_ROOT/lib/std/import.sh"
 
 .env

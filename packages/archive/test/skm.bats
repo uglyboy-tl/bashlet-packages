@@ -20,7 +20,7 @@ setup() {
 # ── Help & Info ──
 
 @test "help - 显示主帮助信息" {
-	run bash "$PROJECT_ROOT/archive/skm.sh" --help
+	run bash "$PROJECT_ROOT/skm.sh" --help
 	[[ $status -eq 0 ]]
 	echo "$output" | grep -q "add"
 	echo "$output" | grep -q "remove"
@@ -32,25 +32,25 @@ setup() {
 }
 
 @test "help - 显示版本信息" {
-	run bash "$PROJECT_ROOT/archive/skm.sh" --version
+	run bash "$PROJECT_ROOT/skm.sh" --version
 	[[ $status -eq 0 ]]
 	echo "$output" | grep -qi "version"
 }
 
 @test "error - 未知子命令" {
-	run bash "$PROJECT_ROOT/archive/skm.sh" nonexistent
+	run bash "$PROJECT_ROOT/skm.sh" nonexistent
 	[[ $status -ne 0 ]]
 }
 
 # ── 源仓库管理 ──
 
 @test "add 需要仓库参数" {
-	run bash "$PROJECT_ROOT/archive/skm.sh" add
+	run bash "$PROJECT_ROOT/skm.sh" add
 	[[ $status -ne 0 ]]
 }
 
 @test "add 无效的格式报错" {
-	run bash "$PROJECT_ROOT/archive/skm.sh" add "badformat"
+	run bash "$PROJECT_ROOT/skm.sh" add "badformat"
 	[[ $status -ne 0 ]]
 }
 
@@ -59,7 +59,7 @@ setup() {
 	git init "$fake_repo"
 	git -C "$fake_repo" commit --allow-empty -m "init"
 
-	run bash "$PROJECT_ROOT/archive/skm.sh" add -n my-test-repo "$fake_repo"
+	run bash "$PROJECT_ROOT/skm.sh" add -n my-test-repo "$fake_repo"
 	[[ $status -eq 0 ]]
 	[[ -d "$SKM_HOME/skills/my-test-repo" ]]
 	grep -q "my-test-repo" "$SKM_CONFIG"
@@ -70,21 +70,21 @@ setup() {
 	git init "$fake_repo"
 	git -C "$fake_repo" commit --allow-empty -m "init"
 
-	run bash "$PROJECT_ROOT/archive/skm.sh" add "$fake_repo"
+	run bash "$PROJECT_ROOT/skm.sh" add "$fake_repo"
 	[[ $status -eq 0 ]]
 	[[ -d "$SKM_HOME/skills/auto-repo" ]]
 	grep -q "auto-repo" "$SKM_CONFIG"
 }
 
 @test "add 无效的本地路径报错" {
-	run bash "$PROJECT_ROOT/archive/skm.sh" add -n bad-repo /tmp/nonexistent-path
+	run bash "$PROJECT_ROOT/skm.sh" add -n bad-repo /tmp/nonexistent-path
 	[[ $status -ne 0 ]]
 }
 
 @test "add 非 git 目录报错" {
 	local empty_dir="${BATS_TEST_TMPDIR}/not-a-repo"
 	mkdir -p "$empty_dir"
-	run bash "$PROJECT_ROOT/archive/skm.sh" add -n bad-repo "$empty_dir"
+	run bash "$PROJECT_ROOT/skm.sh" add -n bad-repo "$empty_dir"
 	[[ $status -ne 0 ]]
 }
 
@@ -92,19 +92,19 @@ setup() {
 	local fake_repo="${BATS_TEST_TMPDIR}/dup-repo"
 	git init "$fake_repo"
 	git -C "$fake_repo" commit --allow-empty -m "init"
-	bash "$PROJECT_ROOT/archive/skm.sh" add -n dup-test "$fake_repo"
+	bash "$PROJECT_ROOT/skm.sh" add -n dup-test "$fake_repo"
 
-	run bash "$PROJECT_ROOT/archive/skm.sh" add -n dup-test "$fake_repo"
+	run bash "$PROJECT_ROOT/skm.sh" add -n dup-test "$fake_repo"
 	[[ $status -eq 0 ]]
 }
 
 @test "remove 需要参数" {
-	run bash "$PROJECT_ROOT/archive/skm.sh" remove
+	run bash "$PROJECT_ROOT/skm.sh" remove
 	[[ $status -ne 0 ]]
 }
 
 @test "remove 不存在的源报错" {
-	run bash "$PROJECT_ROOT/archive/skm.sh" remove nonexistent
+	run bash "$PROJECT_ROOT/skm.sh" remove nonexistent
 	[[ $status -ne 0 ]]
 }
 
@@ -112,21 +112,21 @@ setup() {
 	local fake_repo="${BATS_TEST_TMPDIR}/remove-repo"
 	git init "$fake_repo"
 	git -C "$fake_repo" commit --allow-empty -m "init"
-	bash "$PROJECT_ROOT/archive/skm.sh" add -n remove-test "$fake_repo"
+	bash "$PROJECT_ROOT/skm.sh" add -n remove-test "$fake_repo"
 
-	run bash "$PROJECT_ROOT/archive/skm.sh" remove remove-test
+	run bash "$PROJECT_ROOT/skm.sh" remove remove-test
 	[[ $status -eq 0 ]]
 	[[ ! -d "$SKM_HOME/skills/remove-test" ]]
 	! grep -q "remove-test" "$SKM_CONFIG"
 }
 
 @test "update 可被调用（无参数）" {
-	run bash "$PROJECT_ROOT/archive/skm.sh" update
+	run bash "$PROJECT_ROOT/skm.sh" update
 	[[ $status -eq 0 ]]
 }
 
 @test "update 未知名称报错" {
-	run bash "$PROJECT_ROOT/archive/skm.sh" update nonexistent
+	run bash "$PROJECT_ROOT/skm.sh" update nonexistent
 	[[ $status -ne 0 ]]
 }
 
@@ -135,10 +135,10 @@ setup() {
 	git init "$fake_repo"
 	git -C "$fake_repo" commit --allow-empty -m "init"
 
-	bash "$PROJECT_ROOT/archive/skm.sh" add -n missing-test "$fake_repo"
+	bash "$PROJECT_ROOT/skm.sh" add -n missing-test "$fake_repo"
 	rm -rf "$SKM_HOME/skills/missing-test"
 
-	run bash "$PROJECT_ROOT/archive/skm.sh" update
+	run bash "$PROJECT_ROOT/skm.sh" update
 	[[ $status -eq 0 ]]
 	[[ -d "$SKM_HOME/skills/missing-test" ]]
 }
@@ -150,7 +150,7 @@ setup() {
 
 	mkdir -p "$SKM_HOME/skills/not-in-config"
 
-	run bash "$PROJECT_ROOT/archive/skm.sh" update
+	run bash "$PROJECT_ROOT/skm.sh" update
 	[[ $status -eq 0 ]]
 	[[ ! -d "$SKM_HOME/skills/not-in-config" ]]
 }
@@ -160,9 +160,9 @@ setup() {
 	git init "$fake_repo"
 	git -C "$fake_repo" commit --allow-empty -m "init"
 
-	bash "$PROJECT_ROOT/archive/skm.sh" add -n pull-test "$fake_repo"
+	bash "$PROJECT_ROOT/skm.sh" add -n pull-test "$fake_repo"
 
-	run bash "$PROJECT_ROOT/archive/skm.sh" update pull-test
+	run bash "$PROJECT_ROOT/skm.sh" update pull-test
 	[[ $status -eq 0 ]]
 }
 
@@ -176,14 +176,14 @@ name: relink-skill
 ---
 EOF
 	git -C "$fake_repo" add -A && git -C "$fake_repo" commit -m "init"
-	bash "$PROJECT_ROOT/archive/skm.sh" add -n relink-source "$fake_repo"
+	bash "$PROJECT_ROOT/skm.sh" add -n relink-source "$fake_repo"
 
 	local sandbox_home="${BATS_TEST_TMPDIR}/sandbox-relink"
 	mkdir -p "$sandbox_home/.config/opencode/skills"
-	env HOME="$sandbox_home" bash "$PROJECT_ROOT/archive/skm.sh" install relink-skill --user
+	env HOME="$sandbox_home" bash "$PROJECT_ROOT/skm.sh" install relink-skill --user
 	rm -f "$sandbox_home/.config/opencode/skills/relink-skill"
 
-	run env HOME="$sandbox_home" bash "$PROJECT_ROOT/archive/skm.sh" update relink-source
+	run env HOME="$sandbox_home" bash "$PROJECT_ROOT/skm.sh" update relink-source
 	[[ $status -eq 0 ]]
 	[[ -L "$sandbox_home/.config/opencode/skills/relink-skill" ]]
 	local target
@@ -201,22 +201,22 @@ name: relink-proj-skill
 ---
 EOF
 	git -C "$fake_repo" add -A && git -C "$fake_repo" commit -m "init"
-	bash "$PROJECT_ROOT/archive/skm.sh" add -n relink-proj-source "$fake_repo"
+	bash "$PROJECT_ROOT/skm.sh" add -n relink-proj-source "$fake_repo"
 
 	local sandbox_home="${BATS_TEST_TMPDIR}/sandbox-relink-proj"
 	mkdir -p "$sandbox_home/.config/opencode/skills"
 	local proj_dir="${BATS_TEST_TMPDIR}/proj"
 	mkdir -p "$proj_dir"
-	env HOME="$sandbox_home" bash "$PROJECT_ROOT/archive/skm.sh" install relink-proj-skill --project "$proj_dir"
+	env HOME="$sandbox_home" bash "$PROJECT_ROOT/skm.sh" install relink-proj-skill --project "$proj_dir"
 	rm -f "$proj_dir/.agents/skills/relink-proj-skill"
 
-	run env HOME="$sandbox_home" bash "$PROJECT_ROOT/archive/skm.sh" update relink-proj-source
+	run env HOME="$sandbox_home" bash "$PROJECT_ROOT/skm.sh" update relink-proj-source
 	[[ $status -eq 0 ]]
 	[[ -L "$proj_dir/.agents/skills/relink-proj-skill" ]]
 }
 
 @test "list 可被调用" {
-	run bash "$PROJECT_ROOT/archive/skm.sh" list
+	run bash "$PROJECT_ROOT/skm.sh" list
 	[[ $status -eq 0 ]]
 }
 
@@ -232,8 +232,8 @@ description: A test skill
 EOF
 	git -C "$fake_repo" add -A && git -C "$fake_repo" commit -m "init"
 
-	bash "$PROJECT_ROOT/archive/skm.sh" add -n ls-test "$fake_repo"
-	run bash "$PROJECT_ROOT/archive/skm.sh" list
+	bash "$PROJECT_ROOT/skm.sh" add -n ls-test "$fake_repo"
+	run bash "$PROJECT_ROOT/skm.sh" list
 	[[ $status -eq 0 ]]
 	echo "$output" | grep -q "ls-test"
 	echo "$output" | grep -q "my-skill"
@@ -251,8 +251,8 @@ description: Root level skill
 EOF
 	git -C "$fake_repo" add -A && git -C "$fake_repo" commit -m "init"
 
-	bash "$PROJECT_ROOT/archive/skm.sh" add -n ls-root-source "$fake_repo"
-	run bash "$PROJECT_ROOT/archive/skm.sh" list
+	bash "$PROJECT_ROOT/skm.sh" add -n ls-root-source "$fake_repo"
+	run bash "$PROJECT_ROOT/skm.sh" list
 	[[ $status -eq 0 ]]
 	echo "$output" | grep -q "ls-root-source"
 	echo "$output" | grep -q "root-skill"
@@ -262,13 +262,13 @@ EOF
 # ── search ──
 
 @test "search - 需要关键词参数" {
-	run bash "$PROJECT_ROOT/archive/skm.sh" search
+	run bash "$PROJECT_ROOT/skm.sh" search
 	[[ $status -ne 0 ]]
 }
 
 @test "search - 可被调用" {
 	[[ -n ${SKILLINK_TEST_NETWORK:-} ]] || skip "SKILLINK_TEST_NETWORK not set"
-	run bash "$PROJECT_ROOT/archive/skm.sh" search typescript
+	run bash "$PROJECT_ROOT/skm.sh" search typescript
 	[[ $status -eq 0 ]]
 }
 
@@ -286,16 +286,16 @@ _setup_install_source() {
 		---
 	EOF
 	git -C "$repo" add -A && git -C "$repo" commit -m "init"
-	bash "$PROJECT_ROOT/archive/skm.sh" add -n "$name" "$repo"
+	bash "$PROJECT_ROOT/skm.sh" add -n "$name" "$repo"
 }
 
 @test "install - 需要 skill 名称" {
-	run bash "$PROJECT_ROOT/archive/skm.sh" install
+	run bash "$PROJECT_ROOT/skm.sh" install
 	[[ $status -ne 0 ]]
 }
 
 @test "install - 不存在的 skill 报错" {
-	run bash "$PROJECT_ROOT/archive/skm.sh" install nonexistent
+	run bash "$PROJECT_ROOT/skm.sh" install nonexistent
 	[[ $status -ne 0 ]]
 }
 
@@ -304,7 +304,7 @@ _setup_install_source() {
 	local sandbox_home="${BATS_TEST_TMPDIR}/sandbox-home"
 	mkdir -p "$sandbox_home/.config/opencode/skills"
 
-	run env HOME="$sandbox_home" bash "$PROJECT_ROOT/archive/skm.sh" install my-skill --user
+	run env HOME="$sandbox_home" bash "$PROJECT_ROOT/skm.sh" install my-skill --user
 	[[ $status -eq 0 ]]
 	[[ -f "$sandbox_home/.config/opencode/skills/my-skill/SKILL.md" ]]
 }
@@ -314,7 +314,7 @@ _setup_install_source() {
 	local proj_dir="${BATS_TEST_TMPDIR}/my-project"
 	mkdir -p "$proj_dir"
 
-	run bash "$PROJECT_ROOT/archive/skm.sh" install proj-skill --project "$proj_dir"
+	run bash "$PROJECT_ROOT/skm.sh" install proj-skill --project "$proj_dir"
 	[[ $status -eq 0 ]]
 	[[ -f "$proj_dir/.agents/skills/proj-skill/SKILL.md" ]]
 }
@@ -325,14 +325,14 @@ _setup_install_source() {
 	local sandbox_home="${BATS_TEST_TMPDIR}/sandbox-home3"
 	mkdir -p "$sandbox_home/.config/opencode/skills"
 
-	run env HOME="$sandbox_home" bash "$PROJECT_ROOT/archive/skm.sh" install common-skill --source first-src --user
+	run env HOME="$sandbox_home" bash "$PROJECT_ROOT/skm.sh" install common-skill --source first-src --user
 	[[ $status -eq 0 ]]
 	[[ -f "$sandbox_home/.config/opencode/skills/common-skill/SKILL.md" ]]
 }
 
 @test "install - 指定 source 不匹配报错" {
 	_setup_install_source "match-src" "match-skill"
-	run bash "$PROJECT_ROOT/archive/skm.sh" install match-skill --source wrong-src
+	run bash "$PROJECT_ROOT/skm.sh" install match-skill --source wrong-src
 	[[ $status -ne 0 ]]
 }
 
@@ -341,14 +341,14 @@ _setup_install_source() {
 	local sandbox_home="${BATS_TEST_TMPDIR}/sandbox-home2"
 	mkdir -p "$sandbox_home/.config/opencode/skills"
 
-	env HOME="$sandbox_home" bash "$PROJECT_ROOT/archive/skm.sh" install dup-skill --user
-	run env HOME="$sandbox_home" bash "$PROJECT_ROOT/archive/skm.sh" install dup-skill --user
+	env HOME="$sandbox_home" bash "$PROJECT_ROOT/skm.sh" install dup-skill --user
+	run env HOME="$sandbox_home" bash "$PROJECT_ROOT/skm.sh" install dup-skill --user
 	[[ $status -eq 0 ]]
 	[[ -f "$sandbox_home/.config/opencode/skills/dup-skill/SKILL.md" ]]
 }
 
 @test "install --help 显示帮助" {
-	run bash "$PROJECT_ROOT/archive/skm.sh" install --help
+	run bash "$PROJECT_ROOT/skm.sh" install --help
 	[[ $status -eq 0 ]]
 	echo "$output" | grep -q "source"
 	echo "$output" | grep -q "project"
@@ -365,12 +365,12 @@ description: Root level skill
 ---
 EOF
 	git -C "$fake_repo" add -A && git -C "$fake_repo" commit -m "init"
-	bash "$PROJECT_ROOT/archive/skm.sh" add -n root-skill-source "$fake_repo"
+	bash "$PROJECT_ROOT/skm.sh" add -n root-skill-source "$fake_repo"
 
 	local sandbox_home="${BATS_TEST_TMPDIR}/sandbox-root"
 	mkdir -p "$sandbox_home/.config/opencode/skills"
 
-	run env HOME="$sandbox_home" bash "$PROJECT_ROOT/archive/skm.sh" install root-skill --user
+	run env HOME="$sandbox_home" bash "$PROJECT_ROOT/skm.sh" install root-skill --user
 	[[ $status -eq 0 ]]
 	[[ -f "$sandbox_home/.config/opencode/skills/root-skill/SKILL.md" ]]
 }
@@ -386,12 +386,12 @@ description: Frontmatter match test
 ---
 EOF
 	git -C "$fake_repo" add -A && git -C "$fake_repo" commit -m "init"
-	bash "$PROJECT_ROOT/archive/skm.sh" add -n fm-source "$fake_repo"
+	bash "$PROJECT_ROOT/skm.sh" add -n fm-source "$fake_repo"
 
 	local sandbox_home="${BATS_TEST_TMPDIR}/sandbox-fm"
 	mkdir -p "$sandbox_home/.config/opencode/skills"
 
-	run env HOME="$sandbox_home" bash "$PROJECT_ROOT/archive/skm.sh" install fm-skill --user
+	run env HOME="$sandbox_home" bash "$PROJECT_ROOT/skm.sh" install fm-skill --user
 	[[ $status -eq 0 ]]
 	[[ -f "$sandbox_home/.config/opencode/skills/fm-skill/SKILL.md" ]]
 }
@@ -406,13 +406,13 @@ name: update-skill
 ---
 EOF
 	git -C "$fake_repo" add -A && git -C "$fake_repo" commit -m "init"
-	bash "$PROJECT_ROOT/archive/skm.sh" add -n symlink-source "$fake_repo"
+	bash "$PROJECT_ROOT/skm.sh" add -n symlink-source "$fake_repo"
 
 	local sandbox_home="${BATS_TEST_TMPDIR}/sandbox-symlink"
 	mkdir -p "$sandbox_home/.config/opencode/skills"
 	ln -s /tmp/stale-target "$sandbox_home/.config/opencode/skills/update-skill"
 
-	run env HOME="$sandbox_home" bash "$PROJECT_ROOT/archive/skm.sh" install update-skill --user
+	run env HOME="$sandbox_home" bash "$PROJECT_ROOT/skm.sh" install update-skill --user
 	[[ $status -eq 0 ]]
 	local link_target
 	link_target="$(readlink "$sandbox_home/.config/opencode/skills/update-skill")"
@@ -422,7 +422,7 @@ EOF
 @test "install --source owner/repo 自动添加源失败" {
 	local sandbox_home="${BATS_TEST_TMPDIR}/sandbox-auto"
 	mkdir -p "$sandbox_home/.config/opencode/skills"
-	run env HOME="$sandbox_home" bash "$PROJECT_ROOT/archive/skm.sh" install test-skill --source fake-owner/fake-repo
+	run env HOME="$sandbox_home" bash "$PROJECT_ROOT/skm.sh" install test-skill --source fake-owner/fake-repo
 	[[ $status -ne 0 ]]
 }
 
@@ -430,7 +430,7 @@ EOF
 	_setup_install_source "auto-skip-source" "auto-skip-skill"
 	local sandbox_home="${BATS_TEST_TMPDIR}/sandbox-auto2"
 	mkdir -p "$sandbox_home/.config/opencode/skills"
-	run env HOME="$sandbox_home" bash "$PROJECT_ROOT/archive/skm.sh" install auto-skip-skill --source auto-skip-source
+	run env HOME="$sandbox_home" bash "$PROJECT_ROOT/skm.sh" install auto-skip-skill --source auto-skip-source
 	[[ $status -eq 0 ]]
 	rm -rf ".agents/skills/auto-skip-skill"
 }
@@ -441,7 +441,7 @@ EOF
 	mkdir -p "$sandbox_home/.config/opencode/skills"
 	local proj_dest="${BATS_TEST_TMPDIR}/.agents/skills/cwd-skill"
 
-	run bash "$PROJECT_ROOT/archive/skm.sh" install cwd-skill --project "$BATS_TEST_TMPDIR"
+	run bash "$PROJECT_ROOT/skm.sh" install cwd-skill --project "$BATS_TEST_TMPDIR"
 	[[ $status -eq 0 ]]
 	[[ -L $proj_dest ]]
 }
@@ -449,12 +449,12 @@ EOF
 # ── uninstall ──
 
 @test "uninstall - 需要 skill 名称" {
-	run bash "$PROJECT_ROOT/archive/skm.sh" uninstall
+	run bash "$PROJECT_ROOT/skm.sh" uninstall
 	[[ $status -ne 0 ]]
 }
 
 @test "uninstall - 不存在的 skill 报错" {
-	run bash "$PROJECT_ROOT/archive/skm.sh" uninstall nonexistent
+	run bash "$PROJECT_ROOT/skm.sh" uninstall nonexistent
 	[[ $status -ne 0 ]]
 }
 
@@ -463,8 +463,8 @@ EOF
 	local sandbox_home="${BATS_TEST_TMPDIR}/sandbox-uninst"
 	mkdir -p "$sandbox_home/.config/opencode/skills"
 
-	env HOME="$sandbox_home" bash "$PROJECT_ROOT/archive/skm.sh" install uninst-skill --user
-	run env HOME="$sandbox_home" bash "$PROJECT_ROOT/archive/skm.sh" uninstall uninst-skill
+	env HOME="$sandbox_home" bash "$PROJECT_ROOT/skm.sh" install uninst-skill --user
+	run env HOME="$sandbox_home" bash "$PROJECT_ROOT/skm.sh" uninstall uninst-skill
 	[[ $status -eq 0 ]]
 	[[ ! -L "$sandbox_home/.config/opencode/skills/uninst-skill" ]]
 }
@@ -474,8 +474,8 @@ EOF
 	local sandbox_home="${BATS_TEST_TMPDIR}/sandbox-agt"
 	mkdir -p "$sandbox_home/.config/opencode/skills"
 
-	env HOME="$sandbox_home" bash "$PROJECT_ROOT/archive/skm.sh" install agt-skill --user
-	run env HOME="$sandbox_home" bash "$PROJECT_ROOT/archive/skm.sh" uninstall agt-skill --agent opencode
+	env HOME="$sandbox_home" bash "$PROJECT_ROOT/skm.sh" install agt-skill --user
+	run env HOME="$sandbox_home" bash "$PROJECT_ROOT/skm.sh" uninstall agt-skill --agent opencode
 	[[ $status -eq 0 ]]
 	[[ ! -L "$sandbox_home/.config/opencode/skills/agt-skill" ]]
 }
@@ -485,15 +485,15 @@ EOF
 	local sandbox_home="${BATS_TEST_TMPDIR}/sandbox-wrong-agt"
 	mkdir -p "$sandbox_home/.config/opencode/skills"
 
-	env HOME="$sandbox_home" bash "$PROJECT_ROOT/archive/skm.sh" install wrong-agt --user
-	run env HOME="$sandbox_home" bash "$PROJECT_ROOT/archive/skm.sh" uninstall wrong-agt --agent NONSENSE
+	env HOME="$sandbox_home" bash "$PROJECT_ROOT/skm.sh" install wrong-agt --user
+	run env HOME="$sandbox_home" bash "$PROJECT_ROOT/skm.sh" uninstall wrong-agt --agent NONSENSE
 	[[ $status -ne 0 ]]
 }
 
 # ── 默认 status ──
 
 @test "默认显示 status 信息" {
-	run bash "$PROJECT_ROOT/archive/skm.sh"
+	run bash "$PROJECT_ROOT/skm.sh"
 	[[ $status -eq 0 ]]
 	[[ $output =~ "Home:" ]]
 	[[ $output =~ "Git:" ]]
@@ -510,9 +510,9 @@ EOF
 	local fake_repo="${BATS_TEST_TMPDIR}/status-source"
 	git init "$fake_repo"
 	git -C "$fake_repo" commit --allow-empty -m "init"
-	bash "$PROJECT_ROOT/archive/skm.sh" add -n status-test "$fake_repo"
+	bash "$PROJECT_ROOT/skm.sh" add -n status-test "$fake_repo"
 
-	run bash "$PROJECT_ROOT/archive/skm.sh" status-test
+	run bash "$PROJECT_ROOT/skm.sh" status-test
 	[[ $status -eq 0 ]]
 	echo "$output" | grep -q "No installed skills"
 }
@@ -520,12 +520,12 @@ EOF
 # ── 配置初始化 ──
 
 @test "init - 自动创建配置文件" {
-	run bash "$PROJECT_ROOT/archive/skm.sh" list
+	run bash "$PROJECT_ROOT/skm.sh" list
 	[[ -f "$SKM_CONFIG" ]]
 }
 
 @test "init - 配置包含默认 agents" {
-	run bash "$PROJECT_ROOT/archive/skm.sh" list
+	run bash "$PROJECT_ROOT/skm.sh" list
 	[[ -f "$SKM_CONFIG" ]]
 	grep -q "opencode" "$SKM_CONFIG"
 }
@@ -545,13 +545,13 @@ EOF
 	project_dir = ".opencode/skills"
 	TOML
 
-	run bash "$PROJECT_ROOT/archive/skm.sh" list
+	run bash "$PROJECT_ROOT/skm.sh" list
 	[[ $status -eq 0 ]]
 }
 
 @test "init - 配置不覆盖已有文件" {
 	mkdir -p "${BATS_TEST_TMPDIR}/skm-config"
 	echo "custom content" > "$SKM_CONFIG"
-	run bash "$PROJECT_ROOT/archive/skm.sh" list
+	run bash "$PROJECT_ROOT/skm.sh" list
 	[[ $(< "$SKM_CONFIG") == "custom content" ]]
 }

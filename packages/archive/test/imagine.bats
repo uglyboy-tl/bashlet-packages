@@ -80,7 +80,7 @@ _check_ratio() {
 }
 
 @test "generate - 参考图" {
-  local refimg="$PROJECT_ROOT/archive/test/assets/ref.png"
+  local refimg="$PROJECT_ROOT/test/assets/ref.png"
 
   [[ -f $refimg ]] || skip "assets/ref.png not found"
 
