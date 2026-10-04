@@ -1,0 +1,61 @@
+# BinUp 公共包目录
+#
+# binup 默认从这个文件拉取包目录（BashDev 仓库的 raw 地址）：
+#   https://github.com/uglyboy-tl/BashDev/raw/HEAD/packages/binup/registry.toml
+# 换源优先级：BINUP_REGISTRY_URL 环境变量 > 配置里的 registry_url > 上面的默认值
+# 所以别人可以把自己的 registry.toml 放任意 URL，当第三方源用。
+#
+# 字段与 binup 本地配置同构，多一个 description 仅用于 search 展示。
+# 用法：
+#   binup search <关键词>      # 搜目录（默认 24 小时内用本地缓存）
+#   binup add <包名>           # 把定义写进本地配置
+#   binup update && binup upgrade <包名> && binup install <包名>
+
+[packages.opencode]
+repo = "anomalyco/opencode"
+file_pattern = "opencode-{os}-{arch}"
+file_extension = "tar.gz"
+description = "开源 AI 编码代理"
+
+[packages.uv]
+repo = "astral-sh/uv"
+file_pattern = "uv-{arch}-unknown-{os}-gnu"
+file_extension = "tar.gz"
+description = "极快的 Python 包与项目管理器（Rust）"
+
+[packages.bun]
+repo = "oven-sh/bun"
+file_pattern = "bun-{os}-{arch}"
+file_extension = "zip"
+description = "一体化 JavaScript 运行时 / 打包器 / 测试器 / 包管理器"
+
+[packages.rtk]
+repo = "rtk-ai/rtk"
+file_pattern = "rtk-{arch}-unknown-{os}-musl"
+file_extension = "tar.gz"
+description = "CLI 代理：把常见开发命令的 LLM token 消耗降低 60-90%"
+
+[packages.lf]
+repo = "gokcehan/lf"
+file_pattern = "lf-{os}-{arch}"
+file_extension = "tar.gz"
+description = "终端文件管理器"
+
+[packages.yq]
+repo = "mikefarah/yq"
+file_pattern = "yq_{os}_{arch}"
+file_extension = "tar.gz"
+binary_name = "yq"
+description = "YAML / JSON / XML / CSV / TOML / HCL 命令行处理器"
+
+[packages.chsrc]
+repo = "RubyMetric/chsrc"
+file_pattern = "chsrc-{arch}-{os}"
+binary_name = "chsrc"
+description = "全平台通用换源工具与框架"
+
+[packages.sonar]
+repo = "raskrebs/sonar"
+file_pattern = "sonar_{os}_{arch}"
+file_extension = "tar.gz"
+description = "查看和管理本机监听端口的 CLI 工具"
