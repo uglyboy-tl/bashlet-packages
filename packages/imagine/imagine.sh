@@ -4,616 +4,282 @@
 
 set -euo pipefail
 SCRIPT_NAME="Imagine"
-VERSION="0.2.0"
+VERSION="0.3.0"
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# 错误信息文件：命令替换在子 shell 里跑，变量回传不了，用文件跨子 shell 传递
+IMAGINE_ERROR_FILE="${TMPDIR:-/tmp}/.imagine-err.$$"
+rm -f "$IMAGINE_ERROR_FILE"
 source "$PROJECT_ROOT/lib/std/import.sh"
 
 .env
 
 import std/string
-import std/array
 import core/log
 import core/args
-import ext/requests
 
-declare -ga VALID_PROVIDERS=("openai" "google" "dashscope" "zai" "minimax" "doubao" "agnes" "openrouter")
+import common
+import size
+import provider
+import registry
+import compose
+import providers/index
 
-declare -gA PROVIDER_DEFAULT_MODEL
-PROVIDER_DEFAULT_MODEL["openai"]="gpt-image-1"
-PROVIDER_DEFAULT_MODEL["google"]="gemini-2.5-flash-image"
-PROVIDER_DEFAULT_MODEL["dashscope"]="qwen-image-plus"
-PROVIDER_DEFAULT_MODEL["zai"]="glm-image"
-PROVIDER_DEFAULT_MODEL["minimax"]="image-01"
-PROVIDER_DEFAULT_MODEL["doubao"]="doubao-seedream-5-0-260128"
-PROVIDER_DEFAULT_MODEL["agnes"]="agnes-image-2.1-flash"
-PROVIDER_DEFAULT_MODEL["openrouter"]="openai/gpt-image-1"
-
-# 使用 --ref 时的默认模型（部分模型不支持参考图）
-declare -gA PROVIDER_DEFAULT_REF_MODEL
-PROVIDER_DEFAULT_REF_MODEL["google"]="gemini-2.5-flash-image"
-PROVIDER_DEFAULT_REF_MODEL["minimax"]="image-01"
-PROVIDER_DEFAULT_REF_MODEL["dashscope"]="wan2.7-image-pro"
-PROVIDER_DEFAULT_REF_MODEL["doubao"]="doubao-seedream-5-0-260128"
-PROVIDER_DEFAULT_REF_MODEL["agnes"]="agnes-image-2.1-flash"
-PROVIDER_DEFAULT_REF_MODEL["openrouter"]="openai/gpt-image-1"
-
-declare -gA PROVIDER_API_HOST
-PROVIDER_API_HOST["openai"]="api.openai.com"
-PROVIDER_API_HOST["google"]="generativelanguage.googleapis.com"
-PROVIDER_API_HOST["dashscope"]="dashscope.aliyuncs.com"
-PROVIDER_API_HOST["zai"]="api.z.ai"
-PROVIDER_API_HOST["minimax"]="api.minimaxi.com"
-PROVIDER_API_HOST["doubao"]="ark.cn-beijing.volces.com"
-PROVIDER_API_HOST["agnes"]="apihub.agnes-ai.com"
-PROVIDER_API_HOST["openrouter"]="openrouter.ai"
-
-declare -gA PROVIDER_XGET_PREFIX
-PROVIDER_XGET_PREFIX["openai"]="openai"
-PROVIDER_XGET_PREFIX["google"]="gemini"
-PROVIDER_XGET_PREFIX["dashscope"]=""
-PROVIDER_XGET_PREFIX["zai"]=""
-PROVIDER_XGET_PREFIX["minimax"]=""
-PROVIDER_XGET_PREFIX["doubao"]=""
-PROVIDER_XGET_PREFIX["agnes"]=""
-PROVIDER_XGET_PREFIX["openrouter"]=""
-
-declare -gA PROVIDER_API_KEY_ENV
-PROVIDER_API_KEY_ENV["openai"]="OPENAI_API_KEY"
-PROVIDER_API_KEY_ENV["google"]="GOOGLE_API_KEY"
-PROVIDER_API_KEY_ENV["dashscope"]="DASHSCOPE_API_KEY"
-PROVIDER_API_KEY_ENV["zai"]="ZAI_API_KEY"
-PROVIDER_API_KEY_ENV["minimax"]="MINIMAX_API_KEY"
-PROVIDER_API_KEY_ENV["doubao"]="ARK_API_KEY"
-PROVIDER_API_KEY_ENV["agnes"]="AGNES_API_KEY"
-PROVIDER_API_KEY_ENV["openrouter"]="OPENROUTER_API_KEY"
-
-declare -gA ASPECT_RATIO_SIZES=(
-	["1:1"]="1024*1024"
-	["16:9"]="1792*1024"
-	["9:16"]="1024*1792"
-	["4:3"]="1408*1056"
-	["3:4"]="1056*1408"
-	["2.35:1"]="2048*872"
-)
-
-# minimax 没有模型列表 API，使用静态列表
-declare -gA PROVIDER_MODEL_LIST
-PROVIDER_MODEL_LIST["minimax"]="image-01\nimage-01-plus\nimage-02\nvideo-01"
-
-_resolve_output_path() {
-	local output="$1" provider="$2"
-	local timestamp
-	timestamp=$(date +%Y%m%d_%H%M%S)
-
-	if [[ -z $output ]]; then
-		echo "${provider}_${timestamp}.png"
-		return
-	fi
-
-	if [[ $output == */ ]] || [[ -d $output ]]; then
-		mkdir -p "$output"
-		echo "${output%/}/${provider}_${timestamp}.png"
-		return
-	fi
-
-	echo "$output"
-}
-
-_resolve_image_size() {
-	local size="$1" ar="$2"
-	[[ -n $size ]] && echo "$size" | tr 'x' '*' && return
-	[[ -n $ar ]] && [[ -v ASPECT_RATIO_SIZES[$ar] ]] && echo "${ASPECT_RATIO_SIZES[$ar]}" && return
-	echo "2048*872"
-}
-
-_resolve_base_url() {
-	local provider="$1"
-	local xget_base="${XGET_BASE_URL:-}"
-	local xget_prefix="${PROVIDER_XGET_PREFIX[$provider]:-}"
-	if [[ -n $xget_base && -n $xget_prefix ]]; then
-		echo "${xget_base}/ip/${xget_prefix}"
-	else
-		echo "https://${PROVIDER_API_HOST[$provider]}"
-	fi
-}
-
-_init_provider_api() {
-	local provider="$1"
-
-	requests.init
-	requests.timeout 120
-	requests.base_url "$(_resolve_base_url "$provider")"
-
-	local key_env="${PROVIDER_API_KEY_ENV[$provider]}"
-	local key="${!key_env:-}"
-	[[ -n $key ]] || {
-		log.error "${key_env} not set - add to .env or export it"
-		return 1
-	}
-
-	if [[ $provider == "google" ]]; then
-		requests.headers.append "x-goog-api-key" "$key"
-	else
-		requests.auth_bearer "$key"
-	fi
-}
-
-_download_images() {
-	local urls="$1" output="$2"
-	local i=0
-	while IFS= read -r url; do
-		[[ -z $url ]] && continue
-		local outfile="$output"
-		if [[ $i -gt 0 ]]; then
-			local base="${output%.*}" ext="${output##*.}"
-			outfile="${base}_${i}.${ext}"
-		fi
-		log.info "Downloading image $((i + 1))..."
-		requests.download "$url" "$outfile"
-		log.info "Saved: $outfile"
-		((++i))
-	done <<< "$urls"
-}
-
-_get_mime_type() {
-	local ext="${1##*.}"
-	case "${ext,,}" in
-		jpg | jpeg) echo "image/jpeg" ;;
-		png) echo "image/png" ;;
-		webp) echo "image/webp" ;;
-		*)
-			log.error "Unsupported image format for reference: $1 (jpg/jpeg/png/webp only)"
-			return 1
-			;;
-	esac
-}
-
-_ref_build_array() {
-	local ref="$1" filter="$2"
-	local result='[]' ref_path mime
-	IFS=',' read -ra ref_paths <<< "$ref"
-	for ref_path in "${ref_paths[@]}"; do
-		[[ -f $ref_path ]] || {
-			log.error "Reference image not found: $ref_path"
-			return 1
-		}
-		mime=$(_get_mime_type "$ref_path") || return 1
-		local tmpfile
-		tmpfile=$(mktemp) || return 1
-		string.base64.encode "$ref_path" | tr -d '\n' > "$tmpfile"
-		result=$(echo "$result" | jq --rawfile b64 "$tmpfile" --arg mime "$mime" "$filter")
-		rm -f "$tmpfile"
-	done
-	echo "$result"
-}
-
-_provider_generate() {
-	local provider="$1" prompt="$2" output="$3" model="$4" size="$5" count="$6" seed="$7" negative="$8"
-	local quality="$9" style="${10}" ref="${11}"
-
-	_init_provider_api "$provider" || return 1
-
-	if [[ -n $ref ]]; then
-		model="${model:-${PROVIDER_DEFAULT_REF_MODEL[$provider]:-${PROVIDER_DEFAULT_MODEL[$provider]}}}"
-	else
-		model="${model:-${PROVIDER_DEFAULT_MODEL[$provider]}}"
-	fi
-	count="${count:-1}"
-
-	local body api_path
-	local is_base64=false
-
-	case $provider in
-		openai)
-			[[ $model == "dall-e-3" && $count -gt 1 ]] && {
-				log.warn "DALL-E 3 only supports n=1, forcing count=1"
-				count=1
-			}
-			local sz="${size//\*/x}"
-			api_path="/v1/images/generations"
-			body=$(jq -n --arg m "$model" --arg p "$prompt" --arg s "$sz" --argjson n "$count" '{model: $m, prompt: $p, n: $n, size: $s}')
-			[[ -n $quality ]] && body=$(echo "$body" | jq --arg q "$quality" '.quality = $q')
-			[[ -n $style ]] && body=$(echo "$body" | jq --arg s "$style" '.style = $s')
-			[[ $model != "dall-e-3" && $model != "dall-e-2" ]] && is_base64=true
-			;;
-		google)
-			# 从 size 反推 aspectRatio
-			local aspect_ratio="1:1"
-			if [[ -n $size ]]; then
-				local ar_key
-				for ar_key in "${!ASPECT_RATIO_SIZES[@]}"; do
-					[[ ${ASPECT_RATIO_SIZES[$ar_key]} == "$size" ]] && {
-						aspect_ratio="$ar_key"
-						break
-					}
-				done
-				if [[ $aspect_ratio == "1:1" && $size != "1024*1024" ]]; then
-					local sw sh
-					sw="${size%%\**}" sh="${size#*\*}"
-					local sr=$(((sw * 100) / sh))
-					case $sr in
-						133) aspect_ratio="4:3" ;; 75) aspect_ratio="3:4" ;;
-						175 | 177 | 178) aspect_ratio="16:9" ;; 57) aspect_ratio="9:16" ;;
-					esac
-				fi
-			fi
-			if [[ -n $ref ]]; then
-				local parts
-				parts=$(_ref_build_array "$ref" '. += [{inlineData: {mimeType: $mime, data: $b64}}]') || return 1
-				parts=$(echo "$parts" | jq --arg p "$prompt" '. += [{text: $p}]')
-				api_path="/v1beta/models/${model}:generateContent"
-				body=$(echo "$parts" | jq --arg ar "$aspect_ratio" --argjson n "$count" '{
-          contents: [{role: "user", parts: .}],
-          generationConfig: {responseModalities: ["IMAGE"], imageConfig: {aspectRatio: $ar, imageSize: (if $n > 1 then "1K" else "2K" end)}}
-        }')
-			else
-				api_path="/v1beta/models/${model}:generateContent"
-				body=$(jq -n --arg p "$prompt" --arg ar "$aspect_ratio" --argjson n "$count" '{
-          contents: [{role: "user", parts: [{text: $p}]}],
-          generationConfig: {responseModalities: ["IMAGE"], imageConfig: {aspectRatio: $ar, imageSize: (if $n > 1 then "1K" else "2K" end)}}
-        }')
-			fi
-			is_base64=true
-			;;
-		dashscope)
-			api_path="/api/v1/services/aigc/multimodal-generation/generation"
-			# dashscope 的 size 用星号分隔（如 1024*768），不能转成 x
-			local sz="$size"
-			if [[ -n $ref ]]; then
-				local content
-				content=$(_ref_build_array "$ref" '. += [{image: ("data:\($mime);base64," + $b64)}]') || return 1
-				content=$(echo "$content" | jq --arg p "$prompt" '. += [{text: $p}]')
-				body=$(echo "$content" | jq --arg m "$model" --arg s "$sz" '{
-          model: $m,
-          input: { messages: [{ role: "user", content: . }] },
-          parameters: { size: $s, n: 1, watermark: false }
-        }')
-				count=1
-			else
-				body=$(jq -n --arg m "$model" --arg p "$prompt" --arg s "$sz" --argjson n "$count" '{
-          model: $m,
-          input: { messages: [{ role: "user", content: [{ text: $p }] }] },
-          parameters: { size: $s, n: $n, prompt_extend: true, watermark: false }
-        }')
-				[[ -n $seed ]] && body=$(echo "$body" | jq --argjson seed "$seed" '.parameters.seed = $seed')
-				[[ -n $negative ]] && body=$(echo "$body" | jq --arg neg "$negative" '.parameters.negative_prompt = $neg')
-			fi
-			;;
-		zai)
-			local sz="${size//\*/x}"
-			api_path="/api/paas/v4/images/generations"
-			body=$(jq -n --arg m "$model" --arg p "$prompt" --arg s "$sz" --argjson n "$count" '{model: $m, prompt: $p, n: $n, size: $s}')
-			;;
-		minimax)
-			[[ $count -gt 9 ]] && {
-				log.warn "MiniMax supports at most 9 images per request, capping count=9"
-				count=9
-			}
-			api_path="/v1/image_generation"
-			local mini_w="${size%%\**}" mini_h="${size#*\*}"
-			if [[ -n $ref ]]; then
-				local sr
-				sr=$(_ref_build_array "$ref" '. += [{type: "character", image_file: ("data:\($mime);base64," + $b64)}]') || return 1
-				body=$(echo "$sr" | jq --arg m "$model" --arg p "$prompt" --argjson n "$count" --argjson w "$mini_w" --argjson h "$mini_h" '{
-          model: $m, prompt: $p, n: $n, width: $w, height: $h,
-          response_format: "base64", subject_reference: .
-        }')
-				is_base64=true
-			else
-				body=$(jq -n --arg m "$model" --arg p "$prompt" --argjson n "$count" --argjson w "$mini_w" --argjson h "$mini_h" '{
-          model: $m, prompt: $p, n: $n, width: $w, height: $h
-        }')
-			fi
-			[[ -n $seed ]] && body=$(echo "$body" | jq --argjson seed "$seed" '.seed = $seed')
-			;;
-		doubao)
-			local min_pixels=3686400
-			local sz w h
-			if [[ -z $size || $size == "2048*872" ]]; then
-				sz="2K"
-			else
-				w="${size%%\**}" h="${size#*\*}"
-				if [[ $((w * h)) -lt $min_pixels ]]; then
-					local s=1
-					while [[ $((w * s * h * s)) -lt $min_pixels ]]; do ((s++)); done
-					sz="$((w * s))x$((h * s))"
-				else
-					sz="${size//\*/x}"
-				fi
-			fi
-			api_path="/api/v3/images/generations"
-			if [[ -n $ref ]]; then
-				local image_data
-				image_data=$(_ref_build_array "$ref" '. += [("data:\($mime);base64," + $b64)]') || return 1
-				body=$(echo "$image_data" | jq --arg m "$model" --arg p "$prompt" --arg s "$sz" --argjson n "$count" '{
-          model: $m, prompt: $p, size: $s, n: $n, response_format: "url", watermark: false, image: (if length == 1 then .[0] else . end)
-        }')
-			else
-				body=$(jq -n --arg m "$model" --arg p "$prompt" --arg s "$sz" --argjson n "$count" '{
-          model: $m, prompt: $p, size: $s, n: $n, response_format: "url", watermark: false
-        }')
-			fi
-			[[ -n $seed ]] && body=$(echo "$body" | jq --argjson seed "$seed" '.seed = $seed')
-			[[ -n $negative ]] && body=$(echo "$body" | jq --arg neg "$negative" '.negative_prompt = $neg')
-			;;
-		agnes)
-			local sz="${size//\*/x}"
-			api_path="/v1/images/generations"
-			if [[ -n $ref ]]; then
-				local image_data
-				image_data=$(_ref_build_array "$ref" '. += [("data:\($mime);base64," + $b64)]') || return 1
-				# image 在 extra_body 内部，response_format: "b64_json" 也在 extra_body
-				body=$(echo "$image_data" | jq --arg m "$model" --arg p "$prompt" --arg s "$sz" '{
-          model: $m, prompt: $p, size: $s,
-          extra_body: {
-            image: (if length == 1 then .[0] else . end),
-            response_format: "b64_json"
-          }
-        }')
-				is_base64=true
-			else
-				body=$(jq -n --arg m "$model" --arg p "$prompt" --arg s "$sz" '{
-          model: $m, prompt: $p, size: $s
-        }')
-				is_base64=false
-			fi
-			[[ -n $seed ]] && body=$(echo "$body" | jq --argjson seed "$seed" '.seed = $seed')
-			;;
-		openrouter)
-			# openrouter 仅接受 1024x1024 / 1024x1536 / 1536x1024 / auto，按宽高比映射
-			local sz w="${size%%\**}" h="${size#*\*}"
-			if ((w == h)); then
-				sz="1024x1024"
-			elif ((w > h)); then
-				sz="1536x1024"
-			else
-				sz="1024x1536"
-			fi
-			api_path="/api/v1/images"
-			if [[ -n $ref ]]; then
-				local refs
-				refs=$(_ref_build_array "$ref" '. += [{type: "image_url", image_url: {url: ("data:\($mime);base64," + $b64)}}]') || return 1
-				body=$(echo "$refs" | jq --arg m "$model" --arg p "$prompt" --argjson n "$count" --arg s "$sz" '{
-          model: $m, prompt: $p, n: $n, size: $s, output_format: "png",
-          input_references: .
-        }')
-			else
-				body=$(jq -n --arg m "$model" --arg p "$prompt" --argjson n "$count" --arg s "$sz" '{
-          model: $m, prompt: $p, n: $n, size: $s, output_format: "png"
-        }')
-			fi
-			[[ -n $quality ]] && body=$(echo "$body" | jq --arg q "$quality" '.quality = $q')
-			[[ -n $seed ]] && body=$(echo "$body" | jq --argjson seed "$seed" '.seed = $seed')
-			is_base64=true
-			;;
-	esac
-
-	log.info "[$provider] model: $model / size: ${size:-auto} / n: $count"
-
-	local response bodyfile
-	bodyfile=$(mktemp) || return 1
-	printf '%s' "$body" > "$bodyfile"
-	response=$(requests.post "$api_path" "@$bodyfile" "application/json")
-	rm -f "$bodyfile"
-	requests.raise_for_status "$response" || return 1
-
-	if [[ $provider == "minimax" ]]; then
-		local status
-		status=$(requests.json "$response" '.base_resp.status_code // 1')
-		if [[ $status != 0 ]]; then
-			local msg
-			msg=$(requests.json "$response" '.base_resp.status_msg // "Unknown error"')
-			log.error "MiniMax error: $msg"
-			return 1
-		fi
-	fi
-
-	local images
-	case $provider in
-		openai) images=$(requests.json "$response" '.data[].b64_json // .data[].url // empty') ;;
-		google) images=$(requests.json "$response" '(try .candidates[].content.parts[].inlineData.data) // empty') ;;
-		dashscope) images=$(requests.json "$response" '.output.choices[].message.content[].image // empty') ;;
-		zai) images=$(requests.json "$response" '.data[].url // empty') ;;
-		minimax) images=$(requests.json "$response" '(try .data.image_base64[] catch empty) // (try .data.image_urls[] catch empty) // empty') ;;
-		doubao) images=$(requests.json "$response" '.data[].url // empty') ;;
-		# Agnes 的 b64_json 可能是空串（非 null，不会触发 // 回退），需先排除再回退到 url
-		agnes) images=$(requests.json "$response" '.data[] | (.b64_json | select(. != "")) // (.url | select(. != ""))') ;;
-		openrouter) images=$(requests.json "$response" '.data[].b64_json // empty') ;;
-	esac
-
-	[[ -z $images ]] && {
-		log.error "No images in response"
-		return 1
-	}
-
-	# 实际返回可能不遵循请求的 response_format（Agnes 的 b64_json 为空串时只给 url）
-	$is_base64 && [[ $images == http* ]] && is_base64=false
-
-	if $is_base64; then
-		local i=0
-		while IFS= read -r b64; do
-			[[ -z $b64 ]] && continue
-			local outfile="$output"
-			if [[ $i -gt 0 ]]; then
-				local base="${output%.*}" ext="${output##*.}"
-				outfile="${base}_${i}.${ext}"
-			fi
-			log.info "Decoding image $((i + 1))..."
-			echo "$b64" | string.base64.decode > "$outfile"
-			log.info "Saved: $outfile"
-			((++i))
-		done <<< "$images"
-	else
-		_download_images "$images" "$output"
-	fi
-}
+# ── generate（默认命令） ──
 
 cmd_generate() {
-	args.init "生成图像"
+	args.init "用同一套 CLI 调用所有文生图 / 图生图模型"
 	args.add_options "prompt" "p" "提示词" "STRING"
-	args.add_options "promptfile" "P" "从文件读取提示词" "STRING"
-	args.add_options "output" "o" "输出路径" "STRING"
-	args.add_options "provider" "" "服务提供商" "STRING"
-	args.add_options "model" "m" "模型 ID" "STRING"
-	args.add_options "ar" "" "宽高比" "STRING"
-	args.add_options "size" "s" "显式尺寸" "STRING"
-	args.add_options "quality" "q" "画质预设" "STRING"
+	args.add_options "promptfile" "P" "从文件读取提示词（与 -p 合并）" "FILE"
+	args.add_options "output" "o" "输出文件或目录" "PATH"
+	args.add_options "provider" "" "服务提供商（缺省自动选择）" "NAME"
+	args.add_options "model" "m" "模型 ID" "ID"
+	args.add_options "ar" "" "宽高比，如 16:9" "RATIO"
+	args.add_options "size" "s" "显式尺寸，如 1024x768" "WxH"
+	args.add_options "quality" "q" "分辨率档位 normal|2k（默认 normal）" "PRESET"
 	args.add_options "count" "n" "生成数量" "NUMBER"
 	args.add_options "seed" "" "随机种子" "NUMBER"
 	args.add_options "negative-prompt" "" "负面提示词" "STRING"
-	args.add_options "ref" "" "参考图路径" "STRING"
-	args.add_options "style" "" "风格预设" "STRING"
+	args.add_options "ref" "" "参考图路径，多个用逗号分隔" "PATH"
+	args.add_options "style" "" "风格预设（部分 provider）" "STRING"
+	args.add_options "extra" "" "透传参数（支持 a.b 路径），如 parameters.prompt_extend=false" "K=V,..."
+	args.add_options "json" "" "以 JSON 输出结果到 stdout（日志仍在 stderr）"
+	args.add_options "EXAMPLE" '-p "a red apple"' "自动挑可用 provider"
+	args.add_options "EXAMPLE" '-p "..." --ar 16:9 -o out.png' "按宽高比，脚本负责映射"
+	args.add_options "EXAMPLE" '-p "..." --ref ref.png' "图生图"
+	args.add_options "EXAMPLE" "--provider dashscope --extra parameters.prompt_extend=false" "透传 provider 特有参数"
 	args.process "$@"
 
-	local provider model output size ar count seed negative style quality
-	local prompt promptfile ref
+	IMAGINE_JSON=""
+	IMAGINE_ERROR=""
+	args.has "--json" && IMAGINE_JSON=true
 
+	local prompt promptfile ar raw_size extra quality
 	prompt="$(args.get "-p" "--prompt")" || prompt=""
 	promptfile="$(args.get "-P" "--promptfile")" || promptfile=""
-	output="$(args.get "-o" "--output")" || output=""
-	provider="$(args.get "--provider")" || provider=""
-	model="$(args.get "-m" "--model")" || model=""
+	OUTPUT="$(args.get "-o" "--output")" || OUTPUT=""
+	PROVIDER="$(args.get "--provider")" || PROVIDER=""
+	MODEL="$(args.get "-m" "--model")" || MODEL=""
 	ar="$(args.get "--ar")" || ar=""
-	size="$(args.get "-s" "--size")" || size=""
+	raw_size="$(args.get "-s" "--size")" || raw_size=""
 	quality="$(args.get "-q" "--quality")" || quality=""
-	count="$(args.get "-n" "--count")" || count="1"
-	seed="$(args.get "--seed")" || seed=""
-	negative="$(args.get "--negative-prompt")" || negative=""
-	style="$(args.get "--style")" || style=""
-	ref="$(args.get "--ref")" || ref=""
+	QUALITY_EXPLICIT=false
+	if [[ -n $quality ]]; then
+		[[ $quality == normal || $quality == 2k ]] || {
+			common.fail "--quality 只支持 normal|2k，收到: $quality"
+			return 1
+		}
+		QUALITY_EXPLICIT=true
+	fi
+	QUALITY="${quality:-normal}"
+	[[ $QUALITY == 2k ]] && IMAGE_SIZE=2K || IMAGE_SIZE=1K
+	COUNT="$(args.get "-n" "--count")" || COUNT="1"
+	string.natural.check "$COUNT" || COUNT=1
+	SEED="$(args.get "--seed")" || SEED=""
+	NEGATIVE="$(args.get "--negative-prompt")" || NEGATIVE=""
+	STYLE="$(args.get "--style")" || STYLE=""
+	REF="$(args.get "--ref")" || REF=""
+	extra="$(args.get "--extra")" || extra=""
 
 	if [[ -n $promptfile ]]; then
 		[[ -f $promptfile ]] || {
-			log.error "Prompt file not found: $promptfile"
+			common.fail "Prompt file not found: $promptfile"
 			return 1
 		}
 		local file_content
 		file_content=$(< "$promptfile")
 		prompt="${prompt:+${prompt} }${file_content}"
 	fi
-
-	[[ -z $prompt ]] && {
-		log.error "No prompt. Use -p/--prompt or -P/--promptfile"
+	PROMPT="$prompt"
+	[[ -n $PROMPT ]] || {
+		common.fail "缺少提示词，用 -p/--prompt 或 -P/--promptfile 提供"
 		return 1
 	}
-	string.natural.check "$count" || count=1
+	if [[ -n $SEED ]]; then
+		string.int.check "$SEED" || {
+			common.fail "--seed 必须是整数: $SEED"
+			return 1
+		}
+	fi
 
-	[[ -n $ref && -z $provider ]] && provider="google"
-	[[ -z $provider ]] && provider="minimax"
+	EXTRA_JSON=""
+	if [[ -n $extra ]]; then
+		EXTRA_JSON="$(common.extra_json "$extra")" || return 1
+	fi
 
-	if ! array.contains VALID_PROVIDERS "$provider"; then
-		log.error "Unknown provider: $provider"
-		log.error "Valid: ${VALID_PROVIDERS[*]}"
+	# provider 选择：显式指定则校验；否则按「免费优先 + 有凭证 + 能力匹配」自动挑
+	if [[ -n $PROVIDER ]]; then
+		provider.exists "$PROVIDER" || {
+			common.fail "未知 provider: $PROVIDER"
+			log.error "可用: $(provider.list | tr '\n' ' ')"
+			return 1
+		}
+	else
+		PROVIDER="$(provider.auto_select "$REF")" || {
+			common.fail "没有可用的 provider（检查 API key，或用 --provider 指定）"
+			_providers_table
+			return 1
+		}
+	fi
+	provider.creds_ok "$PROVIDER" || {
+		common.fail "$PROVIDER 缺少凭证：$(provider.creds_missing "$PROVIDER")"
+		return 1
+	}
+	registry.ensure || true
+
+	# 模型解析：--model > <PROVIDER>_IMAGE_MODEL > 目录 > 适配器兜底
+	MODEL="$(provider.resolve_model "$PROVIDER" "$REF" "$MODEL")"
+
+	# 尺寸归一：用户只给宽高比或尺寸，脚本负责映射
+	local resolved
+	resolved="$(size.resolve "$raw_size" "$ar" "$QUALITY")" || return 1
+	SIZE="${resolved%% *}"
+	ASPECT="${resolved##* }"
+	SIZE_EXPLICIT=false
+	[[ -n $raw_size || -n $ar ]] && SIZE_EXPLICIT=true
+	SIZE_REQUESTED="$SIZE"
+
+	compose.apply_caps "$PROVIDER" || return 1
+
+	OUTPUT="$(common.output_path "$OUTPUT" "$PROVIDER")"
+	compose.generate "$PROVIDER" "$OUTPUT"
+}
+
+# ── providers：能力表 ──
+
+_providers_table() {
+	printf '  %-12s %-22s %-5s %-5s %-8s %-7s %-3s %s\n' "PROVIDER" "LABEL" "FREE" "CRED" "SIZE" "REF" "N" "DEFAULT MODEL"
+	printf '  %s\n' "--------------------------------------------------------------------------------------------------"
+	local name free cred cap_size cap_ref maxn
+	while IFS= read -r name; do
+		[[ -z $name ]] && continue
+		free="no"
+		[[ ${PROV_FREE[$name]:-} == true ]] && free="yes"
+		cred="ok"
+		provider.creds_ok "$name" || cred="-"
+		cap_size="$(provider.cap "$name" size)" || cap_size="-"
+		cap_ref="$(provider.cap "$name" ref)" || cap_ref="-"
+		maxn="$(provider.cap "$name" n)" || maxn="-"
+		printf '  %-12s %-22s %-5s %-5s %-8s %-7s %-3s %s\n' \
+			"$name" "$(provider.label "$name")" "$free" "$cred" "$cap_size" "$cap_ref" "$maxn" "$(provider.default_model "$name")"
+	done < <(provider.list)
+	echo ""
+	echo "  SIZE: any=原样直传 / star=星号分隔 / fixed=就近映射 / aspect=宽高比 / none=忽略"
+	echo "  REF:  none=不支持 / one=单张 / multi=多张；CRED: ok=凭证齐全 -=缺凭证"
+}
+
+cmd_providers() {
+	args.init "列出各 provider 的能力与凭证状态"
+	args.process "$@"
+	registry.ensure || true
+	_providers_table
+}
+
+# ── update：从远端刷新模型目录 ──
+
+cmd_update() {
+	args.init "从远端刷新模型目录到本地缓存"
+	args.process "$@"
+	[[ -n ${IMAGINE_REGISTRY_OFF:-} ]] && {
+		log.warn "IMAGINE_REGISTRY_OFF 已设置，跳过刷新"
+		return 1
+	}
+	registry.seed_if_missing || return 1
+	local old new
+	old="$(registry.dump || true)"
+	registry.lock || {
+		log.error "已有刷新正在进行，请稍后再试"
+		return 1
+	}
+	if ! registry.try_fetch; then
+		registry.unlock
+		log.error "刷新失败（保留本地数据）: $IMAGINE_REGISTRY_URL"
 		return 1
 	fi
-
-	output=$(_resolve_output_path "$output" "$provider")
-	size=$(_resolve_image_size "$size" "$ar")
-
-	_provider_generate "$provider" "$prompt" "$output" "$model" "$size" "$count" "$seed" "$negative" "$quality" "$style" "$ref"
+	registry.unlock
+	registry.reload
+	new="$(registry.dump || true)"
+	printf '  %s\n' "本地缓存: $(registry.cache)"
+	registry.print_diff "$old" "$new"
 }
 
-_provider_has_key() {
-	local key_env="${PROVIDER_API_KEY_ENV[$1]}"
-	[[ -n ${!key_env:-} ]]
-}
-
-_list_models_from_api() {
-	local provider="$1"
-	_init_provider_api "$provider" || return 1
-
-	case $provider in
-		openai)
-			requests.json "$(requests.get "/v1/models")" '.data[] | select(.id | test("dall|image")) | .id'
-			;;
-		google)
-			requests.json "$(requests.get "/v1beta/models")" '.models[].name | select(. | test("gemini.*image")) | sub("^models/"; "")'
-			;;
-		dashscope)
-			requests.json "$(requests.get "/api/v1/models?page_no=1&page_size=200")" '.output.models[] | select(.model | test("qwen-image|wan.*image|wan.*t2i|wanx.*t2i")) | .model'
-			;;
-		doubao)
-			requests.json "$(requests.get "/api/v3/models")" '.data[].id | select(. | test("seedream")) | .'
-			;;
-		agnes)
-			requests.json "$(requests.get "/v1/models")" '.data[].id | select(. | test("agnes-image")) | .'
-			;;
-		openrouter)
-			requests.json "$(requests.get "/api/v1/images/models")" '.data[].id'
-			;;
-	esac
-}
-
-_fmt_provider_via() {
-	local p="$1"
-	local xget="${PROVIDER_XGET_PREFIX[$p]:-}"
-	if [[ -n $XGET_BASE_URL && -n $xget ]]; then
-		echo "${XGET_BASE_URL}/ip/${xget}"
-	else
-		echo "direct"
-	fi
-}
+# ── models：默认模型 / 全部模型 ──
 
 cmd_models() {
-	if [[ $# -eq 0 ]]; then
-		printf "  %-12s %-28s %s\n" "PROVIDER" "DEFAULT MODEL" "VIA"
-		printf "  %s\n" "──────────────────────────────────────────────────────────────"
-		for p in "${VALID_PROVIDERS[@]}"; do
-			_provider_has_key "$p" || continue
-			printf "  %-12s %-28s %s\n" "$p" "${PROVIDER_DEFAULT_MODEL[$p]}" "$(_fmt_provider_via "$p")"
-		done
+	args.init "查看提供商与可用模型"
+	args.add_options "arg" "provider" "指定 provider 时列出其全部模型"
+	args.add_options "live" "" "强制走活的模型列表 API（维护者/CI 用，仅输出模型行）"
+	args.process "$@"
+
+	local -n pos="$(args.args)"
+	local name live=false
+	args.has "--live" && live=true
+	[[ $live == true ]] || registry.ensure || true
+	if ((${#pos[@]} == 0)); then
+		printf '  %-12s %-38s %s\n' "PROVIDER" "DEFAULT MODEL" "VIA"
+		printf '  %s\n' "------------------------------------------------------------------------------"
+		while IFS= read -r name; do
+			[[ -z $name ]] && continue
+			provider.creds_ok "$name" || continue
+			printf '  %-12s %-38s %s\n' "$name" "$(provider.default_model "$name")" "$(provider.via "$name")"
+		done < <(provider.list)
 		echo ""
 		echo "  Use 'models <provider>' to see all available models."
-	else
-		local provider="$1"
-		array.contains VALID_PROVIDERS "$provider" || {
-			log.error "Invalid provider: $provider"
-			return 1
-		}
-		_provider_has_key "$provider" || {
-			log.error "${PROVIDER_API_KEY_ENV[$provider]} not set"
-			return 1
-		}
-		printf "  %s (default: %s)\n" "$provider" "${PROVIDER_DEFAULT_MODEL[$provider]}"
-		printf "  %s\n" "──────────────────────────────────────────"
-		local models=""
-		case $provider in
-			openai | google | dashscope | doubao | agnes | openrouter)
-				models=$(_list_models_from_api "$provider") || models=""
-				;;
-			minimax)
-				models="${PROVIDER_MODEL_LIST[$provider]:-}"
-				;;
-		esac
-		echo -e "$models"
+		return 0
 	fi
+
+	name="${pos[0]}"
+	((${#pos[@]} > 1)) && {
+		log.error "models 只接受一个 provider 参数"
+		return 1
+	}
+	provider.exists "$name" || {
+		log.error "未知 provider: $name"
+		return 1
+	}
+	provider.creds_ok "$name" || {
+		log.error "$name 缺少凭证：$(provider.creds_missing "$name")"
+		return 1
+	}
+	if [[ $live == true ]]; then
+		compose.init "$name" || return 1
+		provider.models_live "$name"
+		return
+	fi
+	printf '  %s (default: %s)\n' "$name" "$(provider.default_model "$name")"
+	printf '  %s\n' "------------------------------------------"
+	compose.init "$name" || return 1
+	provider.models "$name"
 }
 
 main() {
-	args.init "命令行文生图工具 — 支持 OpenAI, Google, DashScope, Z.AI, MiniMax, Doubao, Agnes"
+	args.init "命令行文生图 / 图生图工具 — 一套参数调用多家 provider"
 	args.add_options "version" "v" "显示版本信息"
-	args.add_subcommand "models" "查看提供商和模型信息" "cmd_models"
+	args.add_subcommand "models" "查看提供商与可用模型" "cmd_models"
+	args.add_subcommand "providers" "列出各 provider 的能力与凭证状态" "cmd_providers"
+	args.add_subcommand "update" "从远端刷新模型目录" "cmd_update"
 
-	local cmd="${1:-}"
+	local cmd="${1:-}" arg
 	if [[ -v _ARGS_SUBCOMMANDS[$cmd] ]]; then
 		local handler="${_ARGS_SUBCOMMANDS[$cmd]}"
 		shift
-		"$handler" "$@"
-		exit $?
+		"$handler" "$@" || exit $?
+		exit 0
 	fi
 
 	for arg in "$@"; do
-		[[ $arg == "-h" || $arg == "--help" ]] && {
-			args.show_help
-			exit 0
-		}
 		[[ $arg == "-v" || $arg == "--version" ]] && {
 			usage.version
 			exit 0
 		}
 	done
 
-	cmd_generate "$@"
+	local rc=0
+	cmd_generate "$@" || rc=$?
+	if [[ -n ${IMAGINE_JSON:-} ]]; then
+		compose.emit_json "$rc" || true
+	fi
+	rm -f "$IMAGINE_ERROR_FILE"
+	return "$rc"
 }
 
 if [[ ${BASH_SOURCE[0]} == "${0}" ]]; then

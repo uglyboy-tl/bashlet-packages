@@ -1,0 +1,58 @@
+# imagine 模型目录
+#
+# 默认源（imagine 运行时按 TTL 后台刷新到本地缓存）：
+#   https://github.com/uglyboy-tl/bashlet-packages/raw/HEAD/packages/imagine/registry.toml
+# 换源优先级：IMAGINE_REGISTRY_URL 环境变量 > 上面这行的默认值。
+#
+# 字段（每个 [providers.<名字>] 下）：
+#   default_model      默认模型（--model 未指定时用）
+#   default_ref_model  带 --ref 时的默认模型（缺省回退 default_model）
+#   models             已知模型，空格分隔；缓存/离线时供 `imagine models` 用
+#
+# 手动编辑与 scripts/update-registry.sh（CI 定时）等价，均建议走 PR；
+# 能力声明（size/ref/seed/n 等接口机制）不在这里，它们在 lib/providers/*.sh。
+
+[providers.agnes]
+default_model = "agnes-image-2.1-flash"
+default_ref_model = "agnes-image-2.1-flash"
+models = "agnes-image-2.1-flash agnes-image-2.0-flash agnes-image-2.5-flash"
+
+[providers.cloudflare]
+default_model = "@cf/black-forest-labs/flux-1-schnell"
+default_ref_model = "@cf/black-forest-labs/flux-1-schnell"
+models = "@cf/black-forest-labs/flux-1-schnell @cf/black-forest-labs/flux-2-dev"
+
+[providers.google]
+default_model = "gemini-2.5-flash-image"
+default_ref_model = "gemini-2.5-flash-image"
+models = "gemini-2.5-flash-image gemini-3-pro-image-preview gemini-3-pro-image gemini-3.1-flash-image-preview gemini-3.1-flash-image gemini-3.1-flash-lite-image"
+
+[providers.dashscope]
+default_model = "qwen-image-plus"
+default_ref_model = "wan2.7-image-pro"
+models = "qwen-image-2.1-pro qwen-image-3.0 qwen-image-3.0-pro qwen-image-2.0-pro qwen-image-2.0 qwen-image-2.0-pro-2026-06-22 qwen-image-2.0-pro-2026-04-22 qwen-image-2.0-pro-2026-03-03 qwen-image-2.0-2026-03-03 qwen-image-plus-2026-01-09 qwen-image-plus qwen-image-max qwen-image-edit-plus qwen-image qwen-image-edit qwen-image-edit-plus-2025-12-15 wan2.6-t2i wan2.5-t2i-preview wan2.7-image wan2.7-image-pro wan2.6-image wan2.2-t2i-plus wan2.2-t2i-flash wanx2.1-t2i-plus wanx2.1-t2i-turbo"
+
+[providers.doubao]
+default_model = "doubao-seedream-5-0-260128"
+default_ref_model = "doubao-seedream-5-0-260128"
+models = "doubao-seedream-3-0-t2i-250415 doubao-seedream-4-0-250828 doubao-seedream-4-5-251128 doubao-seedream-5-0-260128 doubao-seedream-4-0-20260415 doubao-seedream-5-0-pro-260628 doubao-seedream-5-0-flash-260915"
+
+[providers.minimax]
+default_model = "image-01"
+default_ref_model = "image-01"
+models = "image-01 image-01-plus image-02"
+
+[providers.openai]
+default_model = "gpt-image-1"
+default_ref_model = "gpt-image-1"
+
+[providers.openrouter]
+default_model = "openai/gpt-image-1"
+default_ref_model = "openai/gpt-image-1"
+models = "bytedance-seed/seedream-5-0-flash black-forest-labs/flux-3-image inclusionai/ming-image-0.1-design-layer recraft/recraft-v4.1-flash inclusionai/ming-image-0.1-design openai/gpt-image-2.5-sunburst openai/gpt-image-2.5-flare microsoft/mai-image-2.6 microsoft/mai-image-2.6-flash meta/muse-image recraft/recraft-v4-styles-pro recraft/recraft-v4-styles-vector recraft/recraft-v4-styles-pro-vector recraft/recraft-v4-styles bytedance-seed/seedream-5-0-lite bytedance-seed/seedream-5-0-pro x-ai/grok-imagine-image-2.0 qwen/qwen-image-3-pro qwen/qwen-image-3 microsoft/mai-image-2.5-pro krea/krea-2-large krea/krea-2-medium krea/krea-2-medium-turbo google/gemini-3.1-flash-lite-image openai/gpt-image-2 openai/gpt-image-1-mini openai/gpt-image-1 google/gemini-3.1-flash-image google/gemini-3-pro-image sourceful/riverflow-v2.5-pro sourceful/riverflow-v2.5-fast microsoft/mai-image-2.5 x-ai/grok-imagine-image-quality recraft/recraft-v4.1-pro-vector recraft/recraft-v4.1-vector recraft/recraft-v4.1-utility-pro recraft/recraft-v4.1-utility recraft/recraft-v4.1-pro recraft/recraft-v4.1 recraft/recraft-v4-pro-vector recraft/recraft-v4-vector recraft/recraft-v4-pro recraft/recraft-v4 recraft/recraft-v3 openai/gpt-5.4-image-2 google/gemini-3.1-flash-image-preview sourceful/riverflow-v2-pro sourceful/riverflow-v2-fast black-forest-labs/flux.2-klein-4b bytedance-seed/seedream-4.5 black-forest-labs/flux.2-max black-forest-labs/flux.2-flex black-forest-labs/flux.2-pro google/gemini-3-pro-image-preview openai/gpt-5-image-mini openai/gpt-5-image google/gemini-2.5-flash-image"
+
+[providers.zai]
+default_model = "glm-image"
+default_ref_model = "glm-image"
+models = "glm-image"
+
