@@ -1,6 +1,0 @@
-{"type": "step_start", "part": {"id": "1"}}
-{"type": "text", "part": {"text": "Hello world", "time": {"start": 1000, "end": 2000}}}
-{"type": "tool_use", "part": {"tool": "Bash", "state": {"status": "completed"}}}
-{"type": "tool_use", "part": {"tool": "Read", "state": {"status": "completed"}}}
-{"type": "tool_use", "part": {"tool": "Write", "state": {"status": "completed"}}}
-{"type": "step_finish", "part": {"reason": "stop", "tokens": {"total": 250, "input": 180, "output": 70}}}

@@ -1,5 +1,0 @@
-default_agent = "opencode"
-
-[agents.opencode]
-user_dir = "~/.config/opencode/skills"
-project_dir = ".agents/skills"
