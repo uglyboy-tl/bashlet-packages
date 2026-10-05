@@ -1,5 +1,5 @@
 ---
-name: imagine
+name: image-gen
 description: 命令行文生图 / 图生图，一套参数调用多家 provider（OpenAI、Google、DashScope、Z.AI、MiniMax、Doubao、Agnes、OpenRouter、Cloudflare）。当用户要求生成、绘制、创建图片，或给一张参考图改风格 / 保持身份改图时使用。
 license: MIT
 compatibility: 需要 bash 4.3+、curl、jq。脚本在 `scripts/imagine`（相对本文件目录）。
@@ -7,7 +7,7 @@ metadata:
   version: "0.3.0"
 ---
 
-# imagine
+# image-gen
 
 用同一套参数调用多家文生图 API。脚本入口是 **`scripts/imagine`**（相对本 SKILL.md 所在目录）。
 
