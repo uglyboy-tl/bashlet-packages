@@ -1,0 +1,50 @@
+name: Update imagine registry
+
+# 用各家活模型 API 合并刷新 packages/imagine/registry.toml 的 models 字段，并开 PR 让人确认。
+# 需要在仓库 Settings → Secrets 配置下面用到的 provider key（缺哪家就跳过哪家）。
+
+on:
+  schedule:
+    # 每周一 03:00 UTC
+    - cron: "0 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      # 子模块 bashlet 的 .gitmodules 用的是 SSH URL，CI 没有私钥；
+      # 先用 GITHUB_TOKEN 把 SSH 映射到 HTTPS，再单独初始化子模块。
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Init submodules over HTTPS
+        run: |
+          git config --global url."https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf "git@github.com:"
+          git submodule update --init
+
+      - name: Refresh registry.toml
+        env:
+          AGNES_API_KEY: ${{ secrets.AGNES_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+          ARK_API_KEY: ${{ secrets.ARK_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: bash packages/imagine/scripts/update-registry.sh
+
+      - name: Open pull request
+        uses: peter-evans/create-pull-request@c5a7806660adbe173f04e3e038b0ccdcd758773c # v6
+        with:
+          commit-message: "chore(imagine): refresh model registry"
+          title: "chore(imagine): refresh model registry"
+          body: |
+            定时用各家活模型 API 合并刷新 `packages/imagine/registry.toml` 的 `models` 字段。
+            只追加不删除；`default_model` / `default_ref_model` 由人工维护，本 PR 不含其变更。
+          branch: chore/imagine-registry
+          add-paths: packages/imagine/registry.toml
