@@ -9,24 +9,27 @@ BashDev/
 ├── packages/           # 各脚本包（每包自包含：入口 + lib + test + 资源）
 │   ├── <包名>/           # 包根下恰好一个 *.sh 即入口（名即包名）
 │   │   ├── <包名>.sh     # 入口
-│   │   ├── lib/          # core/std/ext 链接 + 包私有模块（import <模块名>）
-│   │   ├── test/         # *.bats + bats/test_helper 链接
-│   │   ├── build/        # 构建产物（包内 .gitignore 忽略）
+│   │   ├── lib/          # core/std/ext 链接（不入库）+ 包私有模块（import <模块名>）
+│   │   ├── test/         # *.bats + bats/test_helper 链接（不入库）
+│   │   ├── build/        # 构建产物（根 .gitignore 忽略）
 │   │   └── ...           # 包自己的资源（如 binup/registry.toml）
 │   └── archive/        # 存档包，只保留历史代码，不计入全量测试
-├── lib/                # → bashlet/lib（根级共享）
-│   ├── core/           # 核心模块（args, log, config, usage）
-│   ├── std/            # 标准库（array, map, string, console）
-│   └── ext/            # 扩展库（requests, requests.cache, github, llm, select）
-├── test/               # 根级测试设施（包内以链接引用）
-│   ├── bats/           # Bats 测试框架（符号链接）
-│   └── test_helper/    # Bats 断言库与公共 setup
-├── tools/              # 工作区入口：install / test / build / new
+├── lib/                # → bashlet/lib：框架工具链的接口（见下）
+├── tools/              # 工作区入口：install / test / build / new（共享函数：tools/common.sh）
 └── bashlet/            # Bashlet 框架子模块（唯一共享依赖）
 ```
 
-包之间不互相 import；共享的只有 `bashlet`。包内 `lib/` 是「框架链接 + 包私有模块」的混合目录，
-所以 `tools/install` 链接的是 `core`/`std`/`ext` 三个子目录，而非整个 `lib/`。
+包之间不互相 import；共享的只有 `bashlet`。包内 `lib/core|std|ext` 与 `test/{bats,test_helper}`
+都**直连 bashlet**，逐项链接而不是整目录，以留出包私有模块的空间（`lib/<模块名>.sh`）。
+包内这些链接**不入库**（规则在根 `.gitignore` 的 `packages/*/…`），由 `tools/common.sh` 的
+`ensure_links` 幂等补齐；tools 下每个入口动手前都会调用它，所以克隆后执行任何一个 tools 命令
+都会自动接好，`tools/install` 只是显式全量补齐（带包名则只补指定包）。
+
+根级 `test/` 没有存在的价值，已删（没有任何引用）。根级 `lib/` **保留**，但它不是包内链接的
+中转，而是 `bashlet/tools/build` 的接口：它把 `PROJECT_ROOT` 推导为消费仓库根，再
+`source "$PROJECT_ROOT/lib/std/import.sh"`，而 `import.sh` 又由 `${BASH_SOURCE[0]%/*}/..`
+推出 `_LIB_DIR`——所以根下必须有 `lib/{core,std,ext}`，删了 `tools/build` 直接报错。
+这三个链接入库（直接调用 `bashlet/tools/build` 也能工作），`ensure_links` 会修复断链。
 
 ## 包约定
 
@@ -36,7 +39,8 @@ BashDev/
 - **包边界**：包之间不互相 `import`，共享的只有 `bashlet`。需要跳包复用的东西先沉淀到框架。
 - **包私有模块**：放 `lib/<模块名>.sh`，用 `import <模块名>` 加载；别放进 `lib/core|std|ext`（那是 bashlet 的链接）。
 - **命名**：`_` 前缀 = 仅本文件使用；无前缀 = 可供其他文件调用；子命令处理器统一 `cmd_<子命令>`。
-- **资源与产物**：包自己的数据/模板放包根（如 `binup/registry.toml`）；构建产物落 `OUTPUT_DIR`（环境变量 > 包内本地环境文件 > 包内 `build/`），由包内 `.gitignore` 排除。
+- **资源与产物**：包自己的数据/模板放包根（如 `binup/registry.toml`）；构建产物落 `OUTPUT_DIR`（环境变量 > 包内本地环境文件 > 包内 `build/`）。
+- **忽略规则**：共通项（`build/`、`.env`）写在根 `.gitignore`；包内链接用 `packages/*/…` 逐项通配。包内 `.gitignore` 只放该包特有的东西（如 binup 的 `/downloads`）。
 - **测试**：与模块同名（`lib/registry.sh` → `test/registry.bats`），共享 setup 写 `test/setup.bash`；存档包不计入全量测试。
 - **本地环境**：包内环境文件必须在 `source .../import.sh` 之后、`import` 之前加载（`core/log` 在顶层读 `_LOG_LEVEL`），且不入库。
 
@@ -53,7 +57,8 @@ BashDev/
 ## 构建/检查/测试命令
 
 ```bash
-# 初始化 / 新增包后刷新链接（幂等）
+# 克隆后先拉子模块；包内软链接不入库，tools 下任何命令都会自动补齐
+# （tools/install 只是显式全量补齐一次）
 git submodule update --init
 tools/install
 
@@ -64,9 +69,9 @@ tools/test binup
 # 改动不涉及 bashlet 时，不必回归 bashlet 测试集；涉及框架模块或 tools/build 才需要
 cd bashlet && tools/test -x requests
 
-# 检查和格式化
-shellcheck packages/*/*.sh packages/*/lib/*.sh lib/*/*.sh
-shfmt -sr -s -ci -w packages/*/*.sh packages/*/lib/*.sh lib/*/*.sh
+# 检查和格式化（archive/agent.sh 是历史 POSIX sh，一直有告警；imagine/lib 有几个 SC2086 info）
+shellcheck packages/*/*.sh packages/*/lib/*.sh tools/*.sh tools/install tools/test tools/build tools/new
+shfmt -sr -s -ci -w packages/*/*.sh packages/*/lib/*.sh tools/*.sh tools/install tools/test tools/build tools/new
 
 # 构建（默认落在 packages/<包名>/build/<包名>；设了 OUTPUT_DIR 则落到那里）
 tools/build binup
@@ -93,7 +98,7 @@ import core/args
 import ext/requests
 ```
 
-该文件已被包内 `.gitignore` 排除（常含密钥），内容示例：
+该文件已被根 `.gitignore` 排除（常含密钥），内容示例：
 
 ```bash
 # 构建产物落地位置；tools/build 优先读环境变量，其次这里，最后回落到包内 build/

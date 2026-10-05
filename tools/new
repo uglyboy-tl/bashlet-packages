@@ -5,9 +5,7 @@
 
 set -euo pipefail
 
-TOOLS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT="$(dirname "$TOOLS_DIR")"
-PACKAGES="$ROOT/packages"
+source "${BASH_SOURCE[0]%/*}/common.sh"
 
 main() {
 	local pkg="${1:-}"
@@ -78,8 +76,7 @@ setup() {
 }
 EOF
 
-	# 构建产物不入库（每个包自己声明）
-	[[ -f $dir/.gitignore ]] || printf '/build\n' > "$dir/.gitignore"
+	# 构建产物与链接的忽略规则写在根 .gitignore（packages/*/…），包内不用重复声明
 
 	cat > "$dir/README.md" << EOF
 # $pkg
@@ -94,7 +91,7 @@ tools/test $pkg       # 只跑这个包的测试
 \`\`\`
 EOF
 
-	"$TOOLS_DIR/install" > /dev/null
+	ensure_links "$pkg"
 	echo "已创建 packages/$pkg"
 	echo "  $pkg.sh            入口"
 	echo "  test/$pkg.bats     测试"

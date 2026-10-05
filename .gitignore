@@ -2,3 +2,13 @@
 .opencode
 .vscode
 .env
+
+# 包内框架链接：不入库，由 tools/* 自动补齐（见 tools/common.sh）
+packages/*/lib/core
+packages/*/lib/std
+packages/*/lib/ext
+packages/*/test/bats
+packages/*/test/test_helper
+
+# 构建产物
+build/

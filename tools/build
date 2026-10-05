@@ -7,10 +7,7 @@
 
 set -euo pipefail
 
-TOOLS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT="$(dirname "$TOOLS_DIR")"
-BASHLET="$ROOT/bashlet"
-PACKAGES="$ROOT/packages"
+source "${BASH_SOURCE[0]%/*}/common.sh"
 
 main() {
 	local pkg="${1:-}"
@@ -24,6 +21,7 @@ main() {
 		echo "没有这个包: $pkg" >&2
 		exit 1
 	}
+	ensure_links "$pkg"
 
 	local -a entries=()
 	mapfile -t entries < <(find "$dir" -maxdepth 1 -name '*.sh' | sort)

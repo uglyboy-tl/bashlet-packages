@@ -8,10 +8,8 @@
 
 set -euo pipefail
 
-TOOLS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT="$(dirname "$TOOLS_DIR")"
-BATS="$ROOT/test/bats/bin/bats"
-PACKAGES="$ROOT/packages"
+source "${BASH_SOURCE[0]%/*}/common.sh"
+BATS="$BASHLET/test/bats/bin/bats"
 
 # 存档包：只保留历史代码，不计入全量测试（可用 tools/test archive 显式跑）
 declare -ra _ARCHIVED=(archive)
@@ -34,6 +32,8 @@ _collect() {
 }
 
 main() {
+	ensure_links "$@"
+
 	local -a targets=()
 	if (($#)); then
 		local pkg

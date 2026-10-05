@@ -3,56 +3,12 @@
 #
 # 包内必须自带 lib/ 与 test/test_helper/，否则 test_helper/common-setup.bash
 # 推导出的 PROJECT_ROOT 找不到框架（它按「测试文件上上级」定位）。
+# 这些链接不入库，逻辑在 tools/common.sh；其实任何 tools 命令都会自动补齐。
 
 set -euo pipefail
 
-TOOLS_DIR="$(cd "${BASH_SOURCE[0]%/*}" && pwd)"
-ROOT="$(dirname "$TOOLS_DIR")"
-BASHLET="$ROOT/bashlet"
-PACKAGES="$ROOT/packages"
+source "${BASH_SOURCE[0]%/*}/common.sh"
 
-_link() {
-	local target="$1" path="$2"
-	[[ -L $path || -e $path ]] && return 0
-	mkdir -p "$(dirname "$path")"
-	ln -rs "$target" "$path"
-	printf '  %s -> %s\n' "${path#"$ROOT"/}" "${target#"$ROOT"/}"
-}
-
-_install_root() {
-	echo "根级:"
-	_link "$BASHLET/lib/core" "$ROOT/lib/core"
-	_link "$BASHLET/lib/std" "$ROOT/lib/std"
-	_link "$BASHLET/lib/ext" "$ROOT/lib/ext"
-	_link "$BASHLET/test/bats" "$ROOT/test/bats"
-	_link "$BASHLET/test/test_helper/bats-assert" "$ROOT/test/test_helper/bats-assert"
-	_link "$BASHLET/test/test_helper/bats-support" "$ROOT/test/test_helper/bats-support"
-	[[ -f "$ROOT/test/test_helper/common-setup.bash" ]] ||
-		cp "$BASHLET/test/test_helper/common-setup.bash" "$ROOT/test/test_helper/"
-}
-
-_install_package() {
-	local pkg="$1"
-	echo "${pkg#"$ROOT"/}:"
-	# lib 用子目录链接而非整目录，留出包私有模块（lib/cmds 等）的空间
-	[[ -L $pkg/lib ]] && rm -f "$pkg/lib"
-	_link "$BASHLET/lib/core" "$pkg/lib/core"
-	_link "$BASHLET/lib/std" "$pkg/lib/std"
-	_link "$BASHLET/lib/ext" "$pkg/lib/ext"
-	_link "$ROOT/test/test_helper" "$pkg/test/test_helper"
-	_link "$ROOT/test/bats" "$pkg/test/bats"
-}
-
-main() {
-	[[ -d $BASHLET ]] || {
-		echo "缺少 bashlet 子模块，先跑: git submodule update --init" >&2
-		exit 1
-	}
-	_install_root
-	for pkg in "$PACKAGES"/*/; do
-		[[ -d $pkg ]] && _install_package "${pkg%/}"
-	done
-	echo "完成。"
-}
-
-main "$@"
+echo "补齐框架链接（已就绪的跳过）:"
+ensure_links
+echo "完成。"
