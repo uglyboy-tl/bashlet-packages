@@ -26,9 +26,32 @@
 | 一源一适配器，keyless 优先 | 直接映射到 dig 的「一个源一个子命令一个 lib 模块」 |
 | 统一条目结构 | 对照它的 `SourceItem`，dig 用更简的 JSONL schema（见下） |
 | 时间窗口双层过滤 | 源侧下推 + 客户端兜底（无日期条目保留而非丢弃） |
-| 窗口外降权而非删除 | 它的做法是排最后 + 分数乘 0.35，比直接过滤更诚实 |
-| 加权 RRF 做跨源融合 | 比手调线性权重稳：`score = (子查询权重 × 源权重)/(60 + rank)` |
 | **空结果要诚实**（nothing-solid）| 没找到就说没找到，不用低相关条目填充 |
+
+**评估后放弃**：
+
+| 放弃的 | 原因 |
+| --- | --- |
+| 加权 RRF 跨源融合 + 本地评分 | 实测跨源重复率为 0，融合无事可做；见下 |
+| 窗口外降权而非删除 | 源侧下推 + 客户端过滤就够了，多一层分数没有必要 |
+
+### 跨源融合为什么被砍掉
+
+原设计抄了 last30days 的加权 RRF + 本地评分（约 150 行 jq、一整套权重配置）。实测把它否掉了：
+
+- 同主题（`retrieval augmented generation`）拉 hn / so / github / arxiv / zhihu 共 90 条，
+  按规范化 URL 两两求交集，**十个组合全为 0**；`dig merge` 进 90 条出 90 条，`sources`
+  长度全是 1 —— 去重和融合都没有对象。
+- 根因：我们的源在结构上互不重叠（论文 / 问答 / issue / 聚合帖 / 中文帖），
+  它们不索引同一批 URL。跨源去重只在**同一批网页的链接聚合器**之间才有意义。
+- 而且它实际做的只有一件事：用自编的 `rrf_k=60` / `overlap 0.5` / `engagement 0.3` /
+  `time 0.2` / 源权重，把**源内原本的站点相关度**重排一遍。输入是站点自己算的相关度，
+  输出是没有依据的分数，属于负收益。
+- last30days 的融合是喂给它自己的 LLM 综合管线的；我们明确不要那条管线，
+  融合的消费者也就没了。**没有消费者的融合只是重排。**
+
+替代方案：统一 JSONL schema 已经够用 —— 每源一个文件，调用者按 `source` 字段分组或
+自己 jq 即可。dig 不再提供跨源排序。
 
 **不抄这些**（都已确认代价大于收益）：
 
@@ -52,6 +75,7 @@
 
 - 默认继承 `https_proxy` / `http_proxy`（`curl` 与 `ext/requests` 都认）。
 - `DIG_PROXY` 显式覆盖，优先级高于环境变量。
+- 用户级配置 `~/.config/dig/config.toml` 的 `proxy.url` 作为兜底（跟机器绑的地址不应写进仓库）。
 - 所有源都要能报清楚「这是网络不通，不是没搜到」。
 
 ## CLI 形态
@@ -60,12 +84,13 @@
 
 ```bash
 dig hn "bash 数组"          # Hacker News（Algolia）
-dig reddit "bash arrays"    # Reddit 公开 JSON
-dig so "bash array slice"   # Stack Overflow
 dig github "timefmt"        # GitHub issues / 讨论（走 gh）
-dig arxiv "retrieval eval"  # arXiv
-dig xhs "露营装备"           # 小红书
-dig zhihu "..."             # 知乎
+dig so "bash array slice"   # Stack Overflow
+dig arxiv "retrieval eval"  # arXiv 预印本
+dig openalex "transformer"  # OpenAlex 文献 + 被引数
+dig discourse "rate limit"  # 官方论坛（Python/PyTorch/Rust…）
+dig v2ex "zsh 数组"         # V2EX
+dig zhihu "露营装备"         # 知乎（需要 ZHIHU_ACCESS_SECRET）
 ```
 
 公共参数（所有源一致）：
@@ -73,13 +98,13 @@ dig zhihu "..."             # 知乎
 | 参数 | 说明 |
 | --- | --- |
 | `-n, --limit N` | 返回条目上限 |
-| `-p, --period <窗口>` | `last24h` / `pastweek` / `pastmonth` / `all`；源侧不支持时退化为客户端过滤 |
+| `-p, --period <窗口>` | `last24h` / `pastweek` / `pastmonth` / `pastyear` / `all`；源侧不支持时退化为客户端过滤 |
 | `--json` | 输出 JSONL（见下），默认输出人类可读文本 |
-| `-o, --output FILE` | 落盘；配合聚合用 |
+| `-o, --output FILE` | 落盘；多源结果各写一个文件，由调用者自行比较 |
 
 统一输出：默认人类可读，`--json` 时输出 **JSONL**（一行一个条目）——
 选择 JSONL 而不是单个 JSON 数组，是为了让 shell 管道能 `grep`/`head`/逐行 `jq`，
-聚合时也不必把整个结果读进内存。
+调用者也能逐条流式处理而不必读进内存。
 
 ## 条目 schema
 
@@ -101,35 +126,12 @@ dig zhihu "..."             # 知乎
 
 必填：`source` `id` `url` `title` `created_at`。其余可缺省。
 `engagement` 各源字段不同（HN 是 points，Reddit 是 score/num_comments），
-不做归一化，原样放进去，聚合时按需要取。
+不做归一化，原样放进去，跨源比较时按需要取。
 
-时间一律 UTC RFC3339。这条是硬约定：跨源排序全靠它。
+时间一律 UTC RFC3339。这条是硬约定：跨源比较全靠它。
 
-## 轻量聚合
-
-聚合是**独立一步**，不藏在子命令里：
-
-```bash
-dig hn "rust async" --json > /tmp/a.jsonl
-dig reddit "rust async" --json >> /tmp/a.jsonl
-dig merge /tmp/a.jsonl
-```
-
-`dig merge` 做四件事，全部本地启发式，不调 LLM：
-
-1. **去重** —— 按规范化 URL 合并（去 `utm_*` 等追踪参数、统一大小写、去尾斜杠）。
-   同一 URL 多条时保留字段更全的那条。
-2. **跨源融合** —— 每个源自己的列表是一个有序流，用**加权 RRF** 合并：
-   `score += 源权重 / (60 + 该源内的名次)`。比手调线性权重稳，也不依赖各源分数可比。
-3. **本地评分** —— RRF 之外再补三项：query 词与 `title`/`text` 的重合度、
-   engagement 的对数映射（各源权重不同）、时间衰减。最后乘上源权重。
-4. **每源保底** —— 每个源至少留 N 条（若过相关度底线），否则一个源刷屏会把别的源挤没。
-
-权重与保底条数写在包内 `config.toml` 里，可调。这是**排序**，不是**判断**：
-排序结果不等于结论，解读仍归调用者。
-
-**空结果要诚实**：全部被过滤掉时输出「无结果」并说明是哪个源没数据，
-不要用低相关条目填充。这条抄 last30days 的 "nothing-solid" 做法。
+**空结果要诚实**：没搜到就输出「无结果」并说明是哪个源没数据，不要用低相关条目填充。
+这条抄 last30days 的 "nothing-solid" 做法。
 
 ## 源适配器契约
 
@@ -138,48 +140,76 @@ dig merge /tmp/a.jsonl
 每个源模块导出：
 
 ```bash
-source.name           # 短名，等于子命令名
-source.list           # 该源支持的能力：search / thread / comments / 其它
-source.help           # 该源特有参数的说明文本
-source.search         # 主入口，读公共变量，写 JSONL 到 stdout
+<源>.search           # 主入口，读公共变量，写 JSONL 到 stdout
+<源>.map              # 站点响应 -> 条目对象流（纯函数，不触网，可离线测）
+<源>.options          # 可选，声明该源特有参数
+<源>.probe            # 可选，探活：0=可达 1=被拒 2=网络不通 3=缺依赖
+source.register <名> <说明> <caps> <依赖> <凭证>   # 末尾声明，dig sources / doctor / 子命令注册都读它
 ```
 
-公共变量由入口统一解析后传给源模块（`DIG_QUERY` / `DIG_LIMIT` / `DIG_PERIOD` / `DIG_JSON`），
-源特有参数走透传。源模块**只管取数和转 schema**，不做排序美化。
+公共变量由入口统一解析后传给源模块（`DIG_QUERY` / `DIG_LIMIT` / `DIG_PERIOD` / `DIG_AFTER` /
+`DIG_JSON`），源特有参数走透传。源模块**只管取数和转 schema**，不做排序美化。
+完整的契约说明写在 `lib/source.sh` 顶部。
 
-网络请求一律走 `ext/requests`（超时、错误码、JSON 解析统一处理），GitHub 相关的走 `ext/github`。
+网络请求一律走 `ext/requests`（超时、错误码、JSON 解析统一处理）。GitHub 走 `gh`：
+`ext/github` 只包了 release / 资产 / contents / raw，没有 search，而且本机 curl 直连
+`api.github.com` 报自签名证书错（curl exit 60），`gh` 自带 CA 配置正常。
+
+**非 JSON 解析一律走 `lib/parse.sh`。** 从 HTML/XML 里抠数据只有两个入口：
+
+```bash
+parse.json.embedded <变量名>          # 抠 `var NAME = {...}`，用花括号配对而不是正则找结尾（页面里
+                                     # 那段 JSON 后面接什么不固定：`;var meta = ...` 或 `;</script>`）
+parse.xml.records <记录标签> <字段spec>  # XML → TSV；spec: tag / *tag（全部）/ @attr / #（记录正文）
+```
+
+约束的理由：arXiv 的 Atom、YouTube 的 ytInitialPlayerResponse、B 站弹幕 XML 原来各自内联
+了 awk / grep / sed / jq 正则，每处都要自己处理换行、实体、属性与结尾分隔符 —— **同一个坑踩三遍**，
+也是本项目修过 bug 最多的地方。收到一个文件后，① 解析逻辑只有一份、可单测；
+② 将来若真换语言（Python/TS），要重写的也只有这一个文件。
 
 约定：
 
-- **keyless 优先**。需要密钥的源必须在 `source.help` 和 README 里写明，并在缺密钥时给出
+- **keyless 优先**。需要密钥的源必须在 `<源>.options` 的说明、`source.register` 的凭证参数
+  和 README 里写明，并在缺密钥时给出
   明确的「未配置 X，怎么配」提示，而不是静默返回空。
 - **失败要响**。源挂了就报错退出，不要返回空数组假装「没搜到」，
   更不要把网络不通说成没有结果（本机很多源需要代理，见 `docs/sources.md`）。
-- 聚合场景下单个源失败不拖倒全局，但要在输出里标注哪个源失败了。
 
 ## 目录
 
 ```
 packages/dig/
-├── dig.sh              # 入口：参数解析 + 子命令分发 + merge
+├── dig.sh              # 入口：参数解析 + 子命令分发
+├── SKILL.md            # agent skill 定义（脚本路径 scripts/dig）
+├── config.toml         # 默认 limit / period
 ├── lib/
 │   ├── core|std|ext    # bashlet 链接
+│   ├── common.sh       # 网络入口、重试、公共选项解析
+│   ├── parse.sh        # 从非 JSON 文本里取结构的**唯一**入口（内嵌 JSON、XML→TSV）
 │   ├── schema.sh       # 条目 JSONL 构造与校验（本地时间、URL 规范化）
-│   ├── merge.sh        # 去重 / 评分 / 合并
+│   ├── doctor.sh       # 探活
 │   ├── hn.sh           # 各源适配器
 │   └── ...
 ├── docs/
 │   ├── design.md       # 本文件
 │   └── sources.md      # 源清单：端点、密钥、限流、优先级（接线前先看这里）
-├── config.toml         # 聚合权重、默认 limit / period
 └── test/               # 与 lib 同名 *.bats
 ```
 
 ## 状态
 
-只有文档与骨架，**尚未实现**。接线顺序：
+**已实现**：十三个源——`hn` / `github` / `so` / `arxiv` / `openalex` / `discourse` / `hf` /
+`zhihu` / `v2ex` / `bilibili` / `youtube` / `weread` / `polymarket`，加 `dig doctor` 与 `dig sources`。
+跨源聚合已评估并砍掉（见「跨源融合为什么被砍掉」）。
 
-1. `docs/sources.md` —— 源清单、端点、可达性、已知坑。接线前必读。
-2. `schema.sh` + `merge.sh` —— 先把统一 JSONL 与聚合定下来，再加源。
-3. P0 五个源：`hn` → `github` → `so` → `arxiv` → `zhihu`。
-4. `dig doctor` —— 探活 + 说明该源缺什么（密钥 / 代理 / 外部命令）。
+网络层统一带重试：传输层失败与 429/5xx 退避重试（`DIG_RETRY`，默认 2 次），其余 4xx 直接报错。
+
+**源分三层权重**（`caps` 里的 `tier:`，机器可读）：`core`（几乎每次调研都该跑）、
+`topic`（只在匹配的话题类型上用）、`niche`（极少用但不可替代）。`dig sources` 按这个分组输出。
+这是为了抵抗「源一多就想全跑」的惯性 —— dig 是要给一次具体调研做补充，不是聚合器。
+
+加一个源 = 在 `lib/` 加一个文件（末尾调 `source.register`）+ 在 `lib/sources.sh` 加一行 import。
+`doctor` 与子命令注册都从注册表读，不需要改入口。
+
+未接线的候选源见 `docs/sources.md`。

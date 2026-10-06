@@ -2,10 +2,22 @@
 
 接线前先看这里。优先级 = **增量信息价值 × 本机可得性**，两者缺一不接。
 
-标 ✅ 的是本次实测通过（2026-10-05），标 ⚠ 的是来源为 last30days 源码常量但未在
-本机验证，标 ❌ 的是已确认不可行。
+标 ✅ 的是实测通过，标 ⚠ 的是未在本机验证，标 ❌ 的是已确认不可行。
+实测时间：原有结论 2026-10-05，新增源与代理结论 2026-10-06。
 
-## 1. 本机可达性实测（无代理）
+## 1. 本机可达性实测
+
+### 代理 ✅ 可用（2026-10-06 实测）
+
+本机跑着 v2raya，局域网有一个 HTTP 代理 `http://192.168.0.100:50172`（zsh 别名
+`__ZSHPROXY_HTTP`）。经它访问：google 204、youtube 200、reddit 200、v2ex API 200、
+bluesky 302、polymarket 200；出口 IP 稳定（`202.155.152.212` 连测 3 次一致，不是轮换代理）。
+
+dig 的代理取值顺序：`DIG_PROXY` 环境变量 > `~/.config/dig/config.toml` 的 `proxy.url` >
+curl 原生继承 `https_proxy` / `http_proxy`。本机已写好用户级配置，开箱即用；
+构建出的单文件产物**会读同目录的 `.env`**（`dig.sh` 带 `# build:keep-env`，`tools/build` 会保留这段加载）；跨机器部署时用环境变量或随产物放一份 `.env`。
+
+### 无代理时的不可达站点
 
 **不可达** —— DNS 被污染，解析到 Facebook / Dropbox 的 IP，属于典型封锁特征：
 
@@ -31,42 +43,45 @@
 
 - 不可达的源一律走代理。`curl` 原生认 `https_proxy` / `http_proxy`，`ext/requests`
   也继承同一套环境变量，所以 dig 只需支持一个 `DIG_PROXY` 显式覆盖（优先级高于环境变量）。
-- 这些源的可用性取决于代理在不在，所以 **必须有一个 `dig doctor`**（或 `--diagnose`）
-  逐个探活并直接说「reddit 需要代理，当前不通」，而不是让用户对着空结果猜。
-- 本机没装 `yt-dlp`，YouTube 源要等装了这个才有意义。
+- 这些源的可用性取决于代理在不在，所以 **必须有一个 `dig doctor`**
+  逐个探活并直接说「需要代理，当前不通」，而不是让用户对着空结果猜。
 
 ## 2. 优先级
 
-### P0：可达 + 免密钥 + 增量高
+### 已接的源（`dig <名>`，2026-10-06）
 
-| 子命令 | 增量在哪 | 机制 |
-| --- | --- | --- |
-| `dig hn` | 技术讨论、评论、投票数 | HN Algolia ✅ |
-| `dig github` | issue/PR 正文与评论，代码库一手状态 | `api.github.com` ✅（免密钥 10 req/min，`GITHUB_TOKEN` 或 `gh auth token` 提额）|
-| `dig so` | 问答正文与得分 | StackExchange 2.3 ✅ |
-| `dig arxiv` | 论文摘要（别处没有的正文级素材）| `export.arxiv.org` Atom ✅ |
-| `dig zhihu` | 中文一手讨论与热榜 | 知乎官方开放平台 ✅（免费 key，纯 curl）|
+| 子命令 | 增量在哪 | 凭证 | 代理 |
+| --- | --- | --- | --- |
+| `hn` | 技术讨论、投票、评论（`-T comments` 直接搜评论语料） | 免 | 否 |
+| `github` | issue/PR、仓库、代码、commit 四种搜索（`-T`） | 免（走 `gh`） | 否 |
+| `so` | 问答正文与多年沉淀的得分（`-s` 换 StackExchange 站点） | 免 | 否 |
+| `arxiv` | 论文摘要 | 免 | 否 |
+| `openalex` | 学术文献 + 被引数 + 摘要 | 建议免费 key | 否 |
+| `discourse` | 官方论坛讨论（Python/PyTorch/Rust/OpenAI/HF 等 8 个实例） | 免 | 是 |
+| `hf` | 模型 / 数据集的下载量与点赞（`-T`） | 免 | 是 |
+| `zhihu` | 中文一手讨论与热榜 | `ZHIHU_ACCESS_SECRET`（免费） | 否 |
+| `v2ex` | 中文技术社区热帖与搜索 | 免 | 是 |
+| `bilibili` | 视频元数据、弹幕、字幕（`-t` 需 `BILI_SESSDATA`） | 免 / 可选 SESSDATA | 否 |
+| `youtube` | 视频搜索 + `-t` 补精确发布日与简介 | 免 | 是 |
+| `weread` | 书目评分 / 在读人数 | `WEREAD_API_KEY` 或 `pass weread` | 否 |
+| `polymarket` | 预测市场赔率与成交量（真金白银） | 免 | 是 |
 
-`arxiv` 的默认时间窗口要比别的宽（论文不按天出），last30days 用的是 365 天。
+### 探测过但不接的
 
-### P1：可达但增量中等
-
-| 子命令 | 机制 | 备注 |
-| --- | --- | --- |
-| `dig lobsters` | `lobste.rs/search.json?q=` ✅ | 免密钥，JSON，最省事的补充源 |
-| `dig devto` | `dev.to/api/articles?tag=` ✅ | 免密钥；搜索端点未验证 |
-| `dig juejin` / `dig sspai` | HTML，需解析 ✅ 可达 | 无公开 API，维护成本随改版上升 |
-| `dig bilibili` | `api.bilibili.com/x/web-interface/search/all/v2` ✅ 可达 | ⚠ 搜索接口通常要 wbi 签名，返回 200 不代表能拿到数据，接线前必须实测 |
-
-### P2：可达性有条件
-
-| 子命令 | 阻塞点 |
+| 候选 | 实测结论 |
 | --- | --- |
-| `dig reddit` | 需代理。可直接用 `www.reddit.com/search.json?q=&sort=relevance&t=month`（带浏览器 UA）⚠；`arctic-shift` 只是 **subreddit/用户归档查询**，`/api/posts/search` 必须给 `subreddit` 或 `author`，**没有关键词搜索**，只能当「抓某板块」用 |
-| `dig xhs`（小红书）| 无纯 Bash 路径，见第 4 节 |
-| `dig bluesky` | 需代理 + App Password ⚠ |
-| `dig stocktwits` | 本机 403，需 UA / cookie；只有金融主题值得 |
-| `dig polymarket` | 需代理；预测市场赔率是独特增量 ⚠ |
+| `reddit` | 代理能连通，但 `www.reddit.com/search.json` / `old.reddit.com` / `api.reddit.com` **全部 403**（HTML 拦截页），带浏览器 UA 也一样。匿名 JSON 已被封，只能走免费 OAuth app（client_credentials）；`arctic-shift` 需要 `subreddit`/`author`，没有关键词搜索 |
+| `lobsters` | `lobste.rs/search.json` 返回 Anubis 人机验证页（HTTP 200 + "Making sure you're not a bot!"），要跑 JS 解 PoW |
+| `devto` | `/api/articles?tag=` 可用但只有标签浏览；`search/feed_content` 返回空，**没有关键词搜索** |
+| `bluesky` | 需代理 + App Password（免费）；公共 XRPC 未验证通过 |
+| `juejin` / `sspai` | 掘金搜索接口需参数调优；少数派有 RSS 但无关键词搜索 |
+| `douban` | 见第 4 节：免密钥端点会静默限流，且增量是书目元数据而非讨论 |
+| `pubmed` | **不加**：OpenAlex 已索引 PubMed 且多给被引数与摘要（已实测 esearch/esummary 可用，但属于重复造轮子） |
+| Invidious / Piped | ❌ 测过 5 个 Invidious + 4 个 Piped 实例，全部 DNS 能解析但连不上（000）；且依赖第三方与 dig 原则不符 |
+| `xhs`（小红书） | ❌ 无纯 Bash 路径（要 `x-s`/`x-t` JS 签名），见第 4 节 |
+
+**X / Reddit / Bluesky / 招聘板的完整方案（含 queryId 刷新算法）单独放在
+[`candidates.md`](candidates.md)** —— 都是「增量明确、路径已实测、只差凭证或维护机制」的候选。
 
 ### 不做
 
@@ -113,6 +128,10 @@ gh search issues --repo cli/cli --limit 20 \
 
 （✅ 实测可用，比 `--json` + `jq` 少一次进程，适合 bash 里 `IFS='|' read` 逐行吃。）
 
+**但 curl 直连 api.github.com 在本机不可用**：握手报 `SSL certificate problem: self-signed
+certificate`（curl exit 60，疑似本地 SSL 拦截），`gh` 走自己的 CA 配置正常。所以 `dig github`
+不接 `ext/github`（其 `github.api` 就是 curl 打 api.github.com），只走 `gh search issues`。
+
 ### Stack Overflow（✅ 免密钥）
 
 ```bash
@@ -127,8 +146,9 @@ curl -s "https://api.stackexchange.com/2.3/search?intitle=QUERY&site=stackoverfl
 curl -s 'https://export.arxiv.org/api/query?search_query=all:%22PHRASE%22&start=0&max_results=20&sortBy=relevance'
 ```
 
-坑：**必须 https**（http 是 301）。返回 XML 不是 JSON，本机没有 `xmllint`，
-要么用 `grep`/`sed` 硬解，要么让 `ext/requests` 之外单独处理（实现时再定）。
+坑：**必须 https**（http 是 301）；返回的是 Atom XML 不是 JSON（本机没有 `xmllint`）。
+解析统一走 `lib/parse.sh`：`parse.xml.records entry 'published,id,title,summary,*name'`
+一次 jq 出 TSV，本源不再自带 awk 解析器。
 
 ### 知乎官方开放平台（✅ 免密钥但需免费 Access Secret）
 
@@ -145,14 +165,156 @@ curl -s -H "Authorization: Bearer $ZHIHU_ACCESS_SECRET" \
 - 错误码：`30001` 频率、`30002` 配额、`30003` 风控、`20001` token 无效。
 - 参考实现（Python，可直接读它的调用细节）：`github.com/klarkxy/zhihu-search`。
 
-### 其它（⚠ 未实测，来自 last30days 源码常量）
+### YouTube（✅ 免密钥，需代理）
+
+搜索走 InnerTube，纯 JSON（不要用 yt-dlp，也不用解析搜索结果页）：
 
 ```bash
-https://lobste.rs/search.json?q=TOPIC                       # ✅ 实测可达
-https://api.stocktwits.com/api/2/streams/symbol/AAPL.json   # 本机 403
-https://gamma-api.polymarket.com/public-search?q=TOPIC&page=1&events_status=active&keep_closed_markets=0
+KEY='AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8'   # Web 端公开客户端 key，不是账号凭证
+curl -s -X POST "https://www.youtube.com/youtubei/v1/search?key=$KEY&prettyPrint=false" \
+  -H 'Content-Type: application/json' \
+  -d '{"context":{"client":{"clientName":"WEB","clientVersion":"2.20240726.00.00","hl":"en","gl":"US"}},"query":"bash arrays"}'
+```
+
+- 结果在 `.. | objects | select(has("videoRenderer")) | .videoRenderer`，含 videoId / title /
+ownerText / viewCountText / lengthText / publishedTimeText（相对时间）。
+- **精确发布日期与简介**：watch 页里的 `ytInitialPlayerResponse`，用
+  `parse.json.embedded ytInitialPlayerResponse` 抠出来（awk 花括号配对，不是正则找结尾 ——
+  那段 JSON 后面接的是 `;var meta = ...` 或 `;</script>`，正则一定会抓多或抓少），
+  再取 `.microformat.playerMicroformatRenderer.publishDate`（带 `-07:00` 偏移，已转 UTC）
+  与 `.videoDetails.shortDescription`。
+- ❌ **字幕拿不到**：watch 页里有 `captionTracks`，但 `/api/timedtext` 恒返回
+  `HTTP 200 + content-length: 0`，`/youtubei/v1/get_transcript` 返回
+  `400 Precondition check failed`。两者都要 PO token（等于要跑 YouTube 自己的 JS）。
+  InnerTube 的 `/player` 也不给 captions：WEB/TVHTML5 返回 `UNPLAYABLE`，
+  ANDROID_VR 返回 `LOGIN_REQUIRED`。代理出口 IP 稳定，排除签名 IP 失配。
+
+### B 站（✅ 免密钥、免签名）
+
+```bash
+curl -s 'https://api.bilibili.com/x/web-interface/search/all/v2?keyword=TOPIC'
+curl -s 'https://api.bilibili.com/x/web-interface/view?bvid=BV...'          # 拿 cid/aid
+curl -s 'https://api.bilibili.com/x/v1/dm/list.so?oid=CID'                  # 弹幕（deflate）
+curl -s 'https://api.bilibili.com/x/v2/reply?type=1&oid=AID&pn=1&ps=20&sort=2'
+```
+
+- 搜索**不需要 wbi 签名、不需要 cookie**（带不带 cookie 实测都是 `code 0`，3/3 稳定）。
+- 视频字段：bvid / title（带 `<em class="keyword">` 高亮，要清）/ author / play / danmaku /
+  review / duration / pubdate(epoch) / tag / typename。
+- 弹幕响应是 `content-encoding: deflate`，curl `--compressed` 会自动解；XML 是**单行**的，
+  用 `grep -o '<d p="[^"]*">[^<]*</d>'` 抽，不要用按行数数的写法。
+- ❌ **匿名拿不到字幕内容**：`view.subtitle.list` 只能看到「有几条字幕轨」（如 `ai-zh`），
+  但 `subtitle_url` 是空串；`player/v2` 与**补了正确 wbi 签名**的 `player/wbi/v2`
+  对有 CC 轨的视频都返回 `subtitles: []`。
+- ✅ **带 `SESSDATA` 就能拿到**（已接）：`public-clis/bilibili-cli#33` 有一组对照测量——
+  B 站热门 10 个视频，**匿名 0/10 有字幕，登录后 10/10**（全部 `ai-zh`）；拿到
+  `subtitle_url` 后拉下来就是完整文稿（该 issue 实测 456 段 / 5948 字）。
+  dig 用法：`export BILI_SESSDATA=...` 后 `dig bilibili "词" -t 3`。
+- ⚠️ 匿名评论也只有首页 3 条（`ps` 给多少都只回 3，`pn=2` 空，楼中楼 `code 12006`）；
+  所以没带登录态时，本源用**弹幕**（匿名可拿，几千条）当观众反应。
+
+### V2EX（✅ 免密钥，需代理）
+
+```bash
+curl -s 'https://www.v2ex.com/api/topics/hot.json'                    # 热帖
+curl -s 'https://www.sov2ex.com/api/search?q=TOPIC&size=20&sort=created'  # 搜索（第三方）
+```
+
+- 官方没有搜索 API，关键词搜索走 sov2ex。
+- sov2ex 默认按相关度排，结果跨年份，会把时间窗口过滤变成空；**必须带 `sort=created`**。
+- sov2ex 的 `created` 是「北京时间、无时区」的字符串（`2017-05-04T09:38:57`），
+  按 UTC 解析后减 8 小时才是真实 UTC 时刻。
+- 热帖接口的 `created` 本身就是 epoch，不用换算。
+
+### Polymarket（✅ 免密钥，需代理）
+
+```bash
+curl -s 'https://gamma-api.polymarket.com/public-search?q=TOPIC&page=1&events_status=active&keep_closed_markets=0'
+```
+
+增量是 `.events[].markets[].outcomePrices`（赔率）与 `volume`（成交量）——
+真金白银的概率，任何论坛都拿不到。注意结果里混有已结束事件，用 `events_status=active` 过滤。
+
+### OpenAlex（✅ 免密钥但会限流）
+
+```bash
+curl -s 'https://api.openalex.org/works?search=TOPIC&per-page=20&sort=relevance_score:desc'
+```
+
+- 匿名访问**频繁收到 429/503**（`"Anonymous search is paused while the search cluster
+  recovers from heavy load"`）；官方建议申请免费 API key。dig 支持
+  `OPENALEX_API_KEY` 与 `OPENALEX_MAILTO`（polite pool）。
+- 摘要是**倒排索引** `abstract_inverted_index`，要按位置号重排才能还原成正文。
+- 相关度排在前面的往往是老论文，套时间窗口会把结果清空；所以本源默认不筛时间。
+
+### GitHub 四种搜索（`-T`）
+
+全部走 `gh`（自带认证）：
+
+```bash
+gh search issues  "Q" --json number,title,url,state,body,author,createdAt,commentsCount,repository,isPullRequest
+gh search repos   "Q" --json fullName,url,description,stargazersCount,forksCount,createdAt,updatedAt,language
+gh search code    "Q" --json path,repository,url          # 限流 10 次/分
+gh search commits "Q" --json sha,commit,repository,url
+gh api graphql -f query='query($q:String!,$n:Int!){search(query:$q,type:DISCUSSION,first:$n){nodes{... on Discussion{number title url createdAt body upvoteCount category{name} answer{isAnswer} comments{totalCount} author{login} repository{nameWithOwner}}}}}' -F q=QUERY -F n=20
+```
+
+- `repos` 模式的时间轴取 **updatedAt**（仓库是长期存在的，创建时间无意义）；
+- `commits` 的 `commit.author.date` 带偏移（如 `+08:00`），要走 `to_utc`；
+- `code` 搜索的 `repository` 字段是 `nameWithOwner`，`commits` 的却是 `fullName`，两者不一致。
+- **Discussion 只能走 GraphQL**（`gh search` 没有 discussions），但 `search(type:DISCUSSION)` 支持
+  跨仓库关键词搜索，`created:>=YYYY-MM-DD` 限定符也能用；`answer.isAnswer` 告诉你这个问题
+  是否已被解答。
+
+### Discourse（✅ 免密钥、开放 JSON、需代理）
+
+```bash
+curl -s 'https://discuss.python.org/search.json?q=TOPIC'
+```
+
+- 响应同时给 `topics[]`（标题 / slug / reply_count / created_at）与
+  `posts[]`（username / blurb 摘要 / created_at），用 `topic_id` 接起来就是完整条目。
+- 主题 URL 要自己拼：`https://<host>/t/<slug>/<id>`。
+- **`order` 参数无效**（试过 `order=latest`、`order=latest_topic`，首位结果不变），
+  所以源侧无法按时间排；dig 的处理是默认窗口放宽到 `pastyear`。
+- 实测可用的实例（2026-10-06）：discuss.python.org、community.openai.com、
+  discuss.huggingface.co、discuss.pytorch.org、users.rust-lang.org、meta.discourse.org、
+  community.fly.io、discuss.elastic.co。`discuss.jetbrains.com` 不通、`community.render.com` 301。
+
+### Hugging Face（✅ 免密钥，**需代理**）
+
+```bash
+curl -s 'https://huggingface.co/api/models?search=Q&limit=20&sort=downloads&direction=-1'
+curl -s 'https://huggingface.co/api/datasets?search=Q&limit=20&sort=downloads&direction=-1'
+```
+
+- 增量是**模型/数据集的下载量与点赞**：GitHub star 衡量代码仓库，HF 衡量权重与数据，两者不重合。
+- ⚠️ **必须走代理**：直连实测 `http=000`，`getent hosts huggingface.co` 解析到
+  `2a03:2880:f10f:83:face:b00c:0:25de`（Facebook 段，典型污染特征）。
+- 列表接口里 `models` 的 `lastModified` 是 `null`（详情接口才有），要退回 `createdAt`；
+  `datasets` 的 `lastModified` 有值。
+
+### Hacker News 评论搜索（`-T comments`）
+
+```bash
+curl -s 'https://hn.algolia.com/api/v1/search?query=TOPIC&tags=comment&hitsPerPage=20'
+```
+
+返回 `comment_text`（HTML）、`story_title`、`story_id`、`author`、`created_at`；
+`points` 恒为 null（HN 不给单条评论打分）。条目 URL 是
+`https://news.ycombinator.com/item?id=<objectID>`。
+另有一条路是按故事抓整棵评论树：`/api/v1/items/<story_id>`。
+
+### 其它候选（截至 2026-10-06 的实测状态）
+
+```bash
+https://lobste.rs/search.json?q=TOPIC                       # ❌ Anubis 人机验证（页内无可用 JSON）
+https://api.stocktwits.com/api/2/streams/symbol/AAPL.json   # 403，需 UA / cookie
 https://arctic-shift.photon-reddit.com/api/posts/search?subreddit=linux&limit=50   # 仅 subreddit/author
-https://api.semanticscholar.org/graph/v1/paper/search?query=TOPIC&limit=20        # 本机 429，需重试
+https://api.pullpush.io/reddit/search/comment?q=TOPIC        # ✅ 可搜评论，但连续性 429
+https://api.semanticscholar.org/graph/v1/paper/search?query=TOPIC&limit=20        # 429，需重试
+https://api.npmjs.org/downloads/point/last-month/PKG        # ✅ 包下载量
+https://pypistats.org/api/packages/PKG/recent               # ✅ 包下载量
 ```
 
 招聘板（免密钥，公司信号，需要时再说）：
@@ -175,6 +337,45 @@ https://api.smartrecruiters.com/v1/companies/SLUG/postings
 **拿不到任意用户主页、任意问题的全部回答、通用评论**。要这些只能逆向网页接口
 （`www.zhihu.com/api/v4/...`），而那条路必带 `x-zse-96`，是 JSVMP 保护的 JS 算法，
 纯 Bash 不可行。所以 `dig zhihu` 只承诺「搜索 + 热榜 + 问题的回答摘要」。
+
+### 微信读书 ✅ 纯 curl 可行（需 key）
+
+单网关 POST，认证用 Bearer token：
+
+```bash
+curl -s -X POST "https://i.weread.qq.com/api/agent/gateway" \
+  -H "Authorization: Bearer $WEREAD_API_KEY" -H 'Content-Type: application/json' \
+  -d '{"api_name":"/store/search","skill_version":"1.0.4","keyword":"三体","scope":10,"count":3}'
+```
+
+- 凭证：`WEREAD_API_KEY` 环境变量，或 `pass weread`（archive/weread.sh 的取法）。
+- 可用 `api_name`（archive/weread.sh 已全部跑通）：`/store/search`、`/shelf/sync`、
+  `/book/info`、`/book/chapterinfo`、`/book/getprogress`、`/readdata/detail`。
+- `skill_version` 是网关校验字段。过期时响应会带 `upgrade_info`（含 `latest_version` /
+  `upgrade_url`），**但数据仍然返回** —— 所以 dig 只 warn 不 fail（抄 archive 的
+  `assert_ok` 把它当致命错，会让每次上游发版都断）。
+- 返回是「HTTP 200 + 业务 `errcode`」信封，必须单独判错，否则会静默返回空。
+- **能力边界**：只有书目元数据（评分 / 在读人数 / 作者 / 分类），**没有评论区、没有读者讨论**。
+- `newRating` 是 0-1000 的原始分（`930` = 93.0），dig 不做换算，原样进 `engagement`。
+- `dig weread` 目前只用 `/store/search`，`-s/--scope` 可选类型（10=电子书 默认）。
+
+### 豆瓣 ⚠️ 免密钥端点不稳定，暂不接
+
+实测（2026-10-05）：
+
+| 端点 | 结果 |
+| --- | --- |
+| `{movie,book}.douban.com/j/subject_suggest?q=` | ✅ 免密钥 JSON（title/author/year/id） |
+| 同上连续调用 | ⚠️ 第 5-6 次起静默返回 `[]`，HTTP 仍为 200 |
+| `m.douban.com/rexxar/api/v2/{movie,book}/{id}` | ✅ 免登录，含 rating / intro / 演职员 |
+| `m.douban.com/rexxar/api/v2/search` | ❌ 先返回过 19KB，随后变 `code 103 need_login` |
+| `api.douban.com/v2/*` | ❌ `apikey_required` / `invalid_credencial2`（旧版已废） |
+| `www.douban.com/j/search` | ❌ 403 |
+| 豆瓣小组讨论 | ❌ 匿名端点拿不到 |
+
+不接的原因：增量是**书目/影视元数据**而不是讨论区；而且「被限流」与「无结果」都是
+HTTP 200 + `[]`，无法区分，直接违反 dig 的「失败要响」。将来若要接，只能靠
+`subject_suggest` + rexxar 详情，且必须加退避与「连续空结果疑似限流」的判定。
 
 ### 小红书 ❌ 没有纯 Bash 路径
 
@@ -214,8 +415,9 @@ https://api.smartrecruiters.com/v1/companies/SLUG/postings
 - **HN**：`points` 不能做 numericFilters；`>` 要编码成 `%3E`。
 - **Reddit**：必须带浏览器 UA，否则被拒；`.json` 搜索通道本身也不稳（403/429 是常态）。
 - **SO**：`pagesize` ≤ 100；响应是 gzip。
-- **arXiv**：http 会 301；XML 不是 JSON；本机无 `xmllint`。
+- **arXiv**：http 会 301；Atom XML 不是 JSON，本机无 `xmllint`，解析走 `parse.xml.records`。
 - **GitHub**：免密钥 10 req/min，跑批量时先 `gh auth token` 提额。
-- **本机缺 `yt-dlp`**，YouTube 相关全部不可用。
+- **YouTube 只缺字幕**：`timedtext` 恒返回 `content-length: 0`、InnerTube `/player` 各客户端都没有
+  captions（出口 IP 信誉问题，cookie 也救不了）。搜索与 `-t` 补发布日期/简介都可用，**不要用 yt-dlp**。
 - **知乎**：每日免费额度数字**未确认**（二手来源称 1000 次/天），接线前先用
   `GET /api/v1/quota` 实测；官方文档页 JS 渲染，本机抓不到正文。

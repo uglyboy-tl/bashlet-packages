@@ -1,0 +1,241 @@
+#!/usr/bin/env bash
+# shellcheck disable=SC2034,SC2016
+
+# 包内共享小工具：网络入口、公共选项、查询词与数值配置读取。
+
+import core/args
+import core/config
+import core/log
+import ext/requests
+import std/string
+import std/system
+
+import schema
+import source
+
+# 最后一次请求的 HTTP 状态码（失败时也能读到，供调用方区分 429 与网络不通）
+declare -g _DIG_HTTP_STATUS=""
+
+# 统一的网络入口：DIG_PROXY 显式覆盖，其次 curl 原生继承 https_proxy / http_proxy。
+# DIG_COOKIE / DIG_AUTH 是源自己设的头（用户在环境变量里提供，dig 不抓浏览器 cookie）。
+# 凭证走请求头而不是 query 串：URL 会进重试/失败日志，放 URL 等于把 key 打进终端与日志。
+#
+# curl/jq 缺失时不让 requests.init 内部 exit（system.command.required 会 exit 1，
+# 那样 dig.http.probe 的「缺依赖」分支永远到不了、doctor 也拿不到那一行），
+# 而是自己先判定并只返回非 0。
+dig.requests.init() {
+	local missing=""
+	system.command.exist curl || missing+="${missing:+, }curl"
+	system.command.exist jq || missing+="${missing:+, }jq"
+	[[ -z $missing ]] || {
+		log.error "缺少依赖：$missing（dig 需要 curl 与 jq）"
+		return 3
+	}
+
+	local -a extra=("$@")
+	[[ -n ${DIG_PROXY:-} ]] && extra+=(--proxy "$DIG_PROXY")
+	[[ -n ${DIG_COOKIE:-} ]] && extra+=(-H "Cookie: $DIG_COOKIE")
+	[[ -n ${DIG_AUTH:-} ]] && extra+=(-H "Authorization: $DIG_AUTH")
+	requests.init "${extra[@]}" 2> /dev/null
+}
+
+# 最后一次请求的 HTTP 状态码（调用方用来区分失败类型）
+dig.http.status() { printf '%s' "$_DIG_HTTP_STATUS"; }
+
+# 设定后续请求携带的 Cookie（空串等于不带）
+dig.cookie.set() { export DIG_COOKIE="${1:-}"; }
+
+# 设定后续请求携带的 Authorization 头（给 API key 用，避免 key 出现在 URL 里）
+dig.auth.set() { export DIG_AUTH="${1:-}"; }
+
+# 把要发给上游的条数夹到它的单次上限内；真夹了才告警，不静默改掉用户的意图
+dig.clamp() { # <请求值> <上限> <上游名>
+	local want="$1" max="$2" who="$3"
+	if ((want > max)); then
+		log.warn "$who 单次最多 $max 条，请求的 $want 按 $max 处理"
+		printf '%s' "$max"
+	else
+		printf '%s' "$want"
+	fi
+}
+
+# 带重试的请求：传输层失败（连不上/DNS/证书/超时）与 429 / 5xx 才重试，退避 2s、4s…
+# 其余 4xx 不重试 —— 那是参数或凭证问题，重试没用。
+dig.http.request() {
+	local method="$1" url="$2" body="${3:-}" ctype="${4:-}"
+	local tries=$((${DIG_RETRY:-2} + 1)) i=0 resp code rc
+
+	while :; do
+		i=$((i + 1))
+		# 每轮开头清空，否则重试失败时日志会显示上一轮的陈旧状态码
+		resp="" code="" rc=""
+		resp="$(requests.request "$method" "$url" "$body" "$ctype")" || resp=""
+		if [[ -n $resp ]]; then
+			code="$(requests.status_code "$resp")"
+			rc="$(requests.exit_code "$resp")"
+			_DIG_HTTP_STATUS="$code"
+			if [[ $(requests.success "$resp") == "true" ]]; then
+				requests.text "$resp"
+				return 0
+			fi
+			if [[ $rc == "0" && $code != "000" && $code != "0" && $code != "429" && ! $code =~ ^5 ]]; then
+				log.error "请求被拒：$url (HTTP $code)"
+				return 1
+			fi
+		fi
+
+		if ((i < tries)); then
+			log.warn "请求失败（HTTP ${code:-?} curl ${rc:-?}），$((i * 2))s 后重试（$i/$((tries - 1))）：$url"
+			sleep $((i * 2))
+			continue
+		fi
+
+		if [[ -z $resp ]]; then
+			log.error "无法连接 $url：请求未产生响应"
+		elif [[ $rc != "0" || $code == "000" || $code == "0" ]]; then
+			log.error "无法连接 $url：网络不通（curl exit $rc）。若该站点需代理，设 DIG_PROXY 或写 ~/.config/dig/config.toml"
+		else
+			log.error "请求被拒：$url (HTTP $code)，已重试 $((i - 1)) 次"
+		fi
+		return 1
+	done
+}
+
+# GET 并取回响应体（参数走 query.build，与 ext/requests 一致）
+dig.http.get() {
+	local url="$1"
+	shift
+	dig.requests.init || return 1
+	dig.http.request GET "$url$(requests.query.build "$@")" "" ""
+}
+
+# POST JSON 并取回响应体
+dig.http.post_json() {
+	dig.requests.init || return 1
+	dig.http.request POST "$1" "$2" "application/json"
+}
+
+# 通用探活：GET 一个 URL。0=可达 1=被拒 2=网络不通 3=缺 curl/jq；stdout 给一行说明。
+# 供源适配器的 <源>.probe 复用；探活不打日志，避免 doctor 时刷 error。
+dig.http.probe() {
+	local url="$1" host
+	host="$(printf '%s' "$url" | sed -E 's#^https?://([^/]+).*#\1#')"
+	dig.requests.init || {
+		printf '缺少 curl 或 jq'
+		return 3
+	}
+	# 探活要快：默认 30s 超时下，被污染的域名会让 doctor 逐个卡住
+	requests.timeout "${DIG_PROBE_TIMEOUT:-5}"
+
+	local resp code rc
+	resp="$(requests.get "$url")" || {
+		printf '%s 网络不通' "$host"
+		return 2
+	}
+	code="$(requests.status_code "$resp")"
+	rc="$(requests.exit_code "$resp")"
+	# 传输层失败时 status_code 是 0（不是 000）、curl 退出码非 0。只认 000 会把「不通」
+	# 误报成「返回 HTTP 0」，doctor 于是把它归到「接口异常」而不是「不可达 + 设代理」。
+	if [[ -n $rc && $rc != 0 ]] || [[ $code == 0 || $code == 000 ]]; then
+		printf '%s 网络不通（curl exit %s）' "$host" "${rc:-未知}"
+		return 2
+	fi
+	if [[ $(requests.success "$resp") == "true" ]]; then
+		printf '%s 可达' "$host"
+		return 0
+	fi
+	printf '%s 返回 HTTP %s' "$host" "$code"
+	return 1
+}
+
+# 读取选项值，缺失时返回空串而不是非零退出（供 set -e 下的赋值使用）
+dig.opt() { args.get "$@" || true; }
+
+# 读一个「可选正整数」选项：未给时输出 $1（默认值），给了但非法则报错返回非 0。
+# 避免各源各写一遍 `[[ -n $v ]] && check || 默认值` —— 那种写法会给非法值静默回落。
+dig.opt.natural() {
+	local default="$1"
+	shift
+	local v
+	v="$(dig.opt "$@")"
+	if [[ -z $v ]]; then
+		printf '%s' "$default"
+	elif string.natural.check "$v"; then
+		printf '%s' "$v"
+	else
+		log.error "选项 $1 需要正整数，得到：$v"
+		return 1
+	fi
+}
+
+# 位置参数拼成查询词
+dig.query() {
+	local -n _dig_args_ref="$(args.args)"
+	string.trim "${_dig_args_ref[*]:-}"
+}
+
+# 从 config 读数值配置，非法或缺省时回落到 $2
+dig.num() {
+	local v
+	v="$(config.get "$1" 2> /dev/null || true)"
+	if string.int.check "$v" || string.float.check "$v"; then
+		printf '%s' "$v"
+	else
+		printf '%s' "$2"
+	fi
+}
+
+# 所有源一致的公共选项
+dig.options.common() {
+	args.add_options "limit" "n" "返回条目上限" "NUMBER"
+	args.add_options "period" "p" "时间窗口 last24h|pastweek|pastmonth|pastyear|all" "WINDOW"
+	args.add_options "json" "" "输出 JSONL（默认人类可读）"
+	args.add_options "output" "o" "结果落盘文件" "FILE"
+}
+
+# 解析公共选项到 DIG_* 全局。$1 为源模块名（可用 <源>.period 声明自己的默认窗口）。
+dig.common.apply() {
+	local mod="${1:-}"
+	local explicit period_override=""
+
+	# 给了但不是正整数就报错，不静默回落（否则用户以为生效了）——dig.opt.natural 已含这套语义
+	DIG_LIMIT="$(dig.opt.natural "$_DIG_DEFAULT_LIMIT" -n --limit)" || return 1
+
+	# 源的默认窗口写在注册表 caps 里（period:pastyear 这种具体窗口名）；yes/no 只是描述。
+	# 用户显式给的 -p 仍然优先。
+	if [[ -n $mod ]]; then
+		local declared
+		declared="$(source.cap "$mod" period 2> /dev/null || true)"
+		case $declared in
+			yes | no | "") ;;
+			*) period_override="$declared" ;;
+		esac
+	fi
+	explicit="$(dig.opt -p --period)"
+	if [[ -n $explicit ]]; then
+		DIG_PERIOD="$explicit"
+	elif [[ -n $period_override ]]; then
+		DIG_PERIOD="$period_override"
+	else
+		DIG_PERIOD="$_DIG_DEFAULT_PERIOD"
+	fi
+	DIG_AFTER="$(schema.period.after "$DIG_PERIOD")" || return 1
+
+	DIG_JSON=false
+	args.has "--json" && DIG_JSON=true
+
+	DIG_OUTPUT="$(dig.opt -o --output)"
+	DIG_QUERY="$(dig.query)"
+
+	export DIG_LIMIT DIG_PERIOD DIG_AFTER DIG_JSON DIG_OUTPUT DIG_QUERY
+}
+
+# 输出：--json 直出 JSONL，否则渲染成人类可读；给了 -o 就先落盘原始 JSONL
+dig.output() {
+	if [[ -n ${DIG_OUTPUT:-} ]]; then
+		mkdir -p "$(dirname "$DIG_OUTPUT")"
+		tee "$DIG_OUTPUT" | schema.output
+	else
+		schema.output
+	fi
+}

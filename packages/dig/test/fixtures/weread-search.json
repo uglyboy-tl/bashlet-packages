@@ -1,0 +1,55 @@
+{
+  "sid": "test-sid",
+  "hasMore": 1,
+  "results": [
+    {
+      "title": "电子书",
+      "scope": 17,
+      "books": [
+        {
+          "searchIdx": 1,
+          "bookInfo": {
+            "bookId": "1",
+            "deepLink": "https://weread.qq.com/book-detail?type=1&v=aaa",
+            "title": "书一",
+            "author": "作者甲",
+            "newRatingDetail": { "title": "神作" },
+            "newRating": 930,
+            "newRatingCount": 100
+          },
+          "readingCount": 7
+        },
+        {
+          "searchIdx": 2,
+          "bookInfo": {
+            "bookId": "2",
+            "deepLink": "https://weread.qq.com/book-detail?type=1&v=bbb",
+            "title": "书二",
+            "author": "作者乙",
+            "newRating": 800,
+            "newRatingCount": 50
+          },
+          "readingCount": 3
+        }
+      ]
+    },
+    {
+      "title": "电子书",
+      "scope": 17,
+      "books": [
+        {
+          "searchIdx": 1,
+          "bookInfo": {
+            "bookId": "1",
+            "deepLink": "https://weread.qq.com/book-detail?type=1&v=aaa",
+            "title": "书一",
+            "author": "作者甲",
+            "newRating": 930,
+            "newRatingCount": 100
+          },
+          "readingCount": 7
+        }
+      ]
+    }
+  ]
+}
