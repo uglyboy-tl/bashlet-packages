@@ -58,16 +58,28 @@ main() {
 if [[ \${BASH_SOURCE[0]} == "\${0}" ]]; then main "\$@"; fi
 EOF
 
+	local fn="_${pkg//-/_}_setup"
+
+	cat > "$dir/test/setup.bash" << EOF
+#!/usr/bin/env bash
+# $pkg 测试共用环境：各 bats 文件先 load 'test_helper/common-setup'，再 load 'setup.bash'
+
+$fn() {
+	_common_setup
+	cd "\$PROJECT_ROOT"
+	# 入口必须走 _fast_load：bats 开着 functrace，直接 source 会让加载慢几百倍
+	# （见 test_helper/common-setup.bash 里的说明）
+	_fast_load source "\$PROJECT_ROOT/$pkg.sh"
+}
+EOF
+
 	cat > "$dir/test/$pkg.bats" << EOF
 #!/usr/bin/env bats
 
 load 'test_helper/common-setup'
+load 'setup.bash'
 
-setup() {
-	_common_setup
-	cd "\$PROJECT_ROOT"
-	source "\$PROJECT_ROOT/$pkg.sh"
-}
+setup() { $fn; }
 
 @test "$pkg: --version 输出版本" {
 	run bash $pkg.sh --version
@@ -93,9 +105,10 @@ EOF
 
 	ensure_links "$pkg"
 	echo "已创建 packages/$pkg"
-	echo "  $pkg.sh            入口"
-	echo "  test/$pkg.bats     测试"
-	echo "  README.md          说明"
+	printf '  %-22s %s\n' "$pkg.sh" "入口"
+	printf '  %-22s %s\n' "test/setup.bash" "测试共用环境"
+	printf '  %-22s %s\n' "test/$pkg.bats" "测试"
+	printf '  %-22s %s\n' "README.md" "说明"
 }
 
 main "$@"

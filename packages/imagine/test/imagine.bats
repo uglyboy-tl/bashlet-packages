@@ -1,6 +1,7 @@
 #!/usr/bin/env bats
 
 load 'test_helper/common-setup'
+load 'setup.bash'
 
 TEST_PROVIDERS=(agnes)
 
@@ -16,24 +17,9 @@ provider_flaky_endpoint() { :; }
 provider_flaky_body() { echo '{"prompt":"x"}'; }
 provider_flaky_parse() { IMAGINE_RESULT_TYPE=base64; IMAGINE_RESULTS="iVBORw0KGgo="; }
 
-setup() {
-  _common_setup
-  cd "$PROJECT_ROOT"
-  TEST_DIR=$(mktemp -d)
-  # 隔离模型目录缓存，并禁掉后台回源（测试不联网）
-  export SCRIPT_CACHE_DIR="$TEST_DIR/cache"
-  export IMAGINE_REGISTRY_OFF=1
-  import size
-  import common
-  import provider
-  import registry
-  import compose
-  import providers/index
-}
+setup() { _imagine_setup; }
 
-teardown() {
-  rm -rf "${TEST_DIR:-}"
-}
+teardown() { _imagine_teardown; }
 
 # ── 离线单元测试（不耗 tokens） ──
 
@@ -137,6 +123,15 @@ teardown() {
   [[ $output == "2" ]]
   run provider.default_model fake
   [[ -z $output ]]
+}
+
+@test "unit - 所有 provider 适配器实现完整契约" {
+  for name in $(provider.list); do
+    for m in meta auth endpoint body parse; do
+      declare -F "provider_${name}_${m}" > /dev/null ||
+        fail "provider $name 缺少 provider_${name}_${m}"
+    done
+  done
 }
 
 @test "unit - --extra 合并进请求体" {

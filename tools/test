@@ -54,7 +54,13 @@ main() {
 	}
 
 	echo "测试 ${#targets[@]} 个文件: ${targets[*]##*/}"
-	exec "$BATS" "${targets[@]}"
+
+	# 总耗时是回归防线：setup 里若在 functrace 下 source/import，单条会从 ~0.3s 回到 3s 级，
+	# 整套从 2 分钟变成十分钟，这里一眼能看出来。修法见 AGENTS.md「测试里加载入口必须走 _fast_load」。
+	local start=$SECONDS rc=0
+	"$BATS" "${targets[@]}" || rc=$?
+	printf '\n耗时 %ss\n' "$((SECONDS - start))"
+	exit "$rc"
 }
 
 main "$@"

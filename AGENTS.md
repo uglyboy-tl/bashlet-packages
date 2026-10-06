@@ -41,7 +41,18 @@ BashDev/
 - **命名**：`_` 前缀 = 仅本文件使用；无前缀 = 可供其他文件调用；子命令处理器统一 `cmd_<子命令>`。
 - **资源与产物**：包自己的数据/模板放包根（如 `binup/registry.toml`）；构建产物落 `OUTPUT_DIR`（环境变量 > 包内本地环境文件 > 包内 `build/`）。
 - **忽略规则**：共通项（`build/`、`.env`）写在根 `.gitignore`；包内链接用 `packages/*/…` 逐项通配。包内 `.gitignore` 只放该包特有的东西（如 binup 的 `/downloads`）。
-- **测试**：与模块同名（`lib/registry.sh` → `test/registry.bats`），共享 setup 写 `test/setup.bash`；存档包不计入全量测试。
+- **测试**：与模块同名（`lib/registry.sh` → `test/registry.bats`）；存档包不计入全量测试。
+- **每个包的 `test/` 下都有 `test/setup.bash`**：bats 文件只 `load 'test_helper/common-setup'`、
+  `load 'setup.bash'`，再写用例；`setup()` 里调 `setup.bash` 暴露的 `_<包>_setup`。
+  只有单个 .bats 的包（imagine、apthist）也建一个，保持所有包的 test/ 结构一致。
+- **测试里加载代码必须走 `_fast_load`**（定义在 `bashlet/test/test_helper/common-setup.bash`）：
+  bats 会装 DEBUG trap 并开着 functrace，直接 `source` / `import` 会让被加载文件里的
+  **每一条命令**都过一遍 trap——单个模块使 `import` 从 ~0 变成 325ms，一个包加载十几个模块
+  就是 3s/条。setup 里**凡是有循环/解析的初始化**（如 `config.load` 逐行读 TOML）也要包进去。
+  实测 binup 3.6s/条 → 0.27s，dig 3.3s/条 → 0.26s。下限约 0.08s/条（`bats-assert` 自身的加载，包不掉）。
+  上游查证过：bats 是**有意** `set -eET`（`libexec/bats-core/bats-exec-test:2`，为 run() 的栈追踪），
+  它唯一的官方排除机制 `BATS_DEBUG_EXCLUDE_PATHS` 实测对本问题无效；`set +T` 是当前唯一有效手段。
+  细节与量级见 `common-setup.bash` 里 `_fast_load` 的注释。
 - **本地环境**：包内环境文件必须在 `source .../import.sh` 之后、`import` 之前加载（`core/log` 在顶层读 `_LOG_LEVEL`），且不入库。
 
 ## 编程指南
@@ -65,6 +76,7 @@ tools/install
 # 测试（不带参数跑全部包；archive 存档包需显式指定）
 tools/test
 tools/test binup
+# 末尾会打印总耗时：若 setup 里误在 functrace 下 source，单条会回到 3s 级，一眼能看出来
 
 # 改动不涉及 bashlet 时，不必回归 bashlet 测试集；涉及框架模块或 tools/build 才需要
 cd bashlet && tools/test -x requests

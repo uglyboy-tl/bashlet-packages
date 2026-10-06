@@ -10,8 +10,11 @@ _binup_setup() {
 	export _CONFIG_PATH="$BATS_TEST_TMPDIR/config.toml"
 	printf 'download_dir = "%s/dl"\nlog_level = "info"\n' "$BATS_TEST_TMPDIR" > "$_CONFIG_PATH"
 	mkdir -p "$BATS_TEST_TMPDIR/dl"
-	source "$PROJECT_ROOT/binup.sh"
-	init_settings
+	# 入口必须走 _fast_load：bats 开着 functrace，直接 source 会让加载慢几百倍
+	# （见 test_helper/common-setup.bash 里的说明）
+	_fast_load source "$PROJECT_ROOT/binup.sh"
+	# init_settings 内部会逐行解析 TOML，同样吃 trap 开销，一并包起来
+	_fast_load init_settings
 }
 
 # 造一份假的包目录缓存；registry_url 指向关闭端口，让回源立即失败
