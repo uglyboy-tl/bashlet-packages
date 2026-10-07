@@ -35,6 +35,8 @@ init_settings() {
 	config.register "registry_url" "$_DEFAULT_REGISTRY_URL" "string" "包目录 URL（可换成第三方源）"
 	config.register "registry_ttl" "24" "string" "包目录缓存有效期（小时）"
 	config.array.register "packages" "repo"
+	# description 只在远端：保留注册是为了让 registry 的严格模式能解析出它（dump 走同一个 config.load），
+	# 但不放进 REGISTRY_FIELDS，所以 add 不会把它写进本地配置
 	config.array.register "packages" "description" ""
 	config.array.register "packages" "version_type" ""
 	config.array.register "packages" "file_pattern"
@@ -49,11 +51,15 @@ init_settings() {
 	[[ -n $main_config && -f $main_config ]] && config.load "$main_config"
 	SETTINGS_DOWNLOAD_DIR="$(config.get "download_dir")"
 	SETTINGS_PROXY_PREFIX="$(config.get proxy_prefix)"
-	mkdir -p "$SETTINGS_DOWNLOAD_DIR"
 	VERSIONS_FILE="$SETTINGS_DOWNLOAD_DIR/versions.toml"
-	[[ -f $VERSIONS_FILE ]] || touch "$VERSIONS_FILE"
-	config.load "$VERSIONS_FILE" || true
+	config.load "$VERSIONS_FILE" 2> /dev/null || true
 	log.setLevel "$(config.get log_level)"
+}
+
+# 下载目录/版本文件只有会落盘的子命令需要；不发生副作用的命令（--version、search、add）不该建目录
+ensure_download_dir() {
+	mkdir -p "$SETTINGS_DOWNLOAD_DIR"
+	[[ -f $VERSIONS_FILE ]] || touch "$VERSIONS_FILE"
 }
 
 main() {

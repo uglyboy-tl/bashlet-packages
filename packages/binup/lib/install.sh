@@ -99,6 +99,8 @@ cmd_install() {
 	args.add_options "arg" "待安装的二进制包" "可选：指定需要安装的二进制包名，支持多个包名"
 	args.process "$@"
 
+	ensure_download_dir
+
 	local -n target_packages="$(args.args)"
 
 	console.layout.section "安装包"

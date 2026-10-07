@@ -44,6 +44,8 @@ cmd_upgrade() {
 	args.add_options "arg" "待更新的二进制包" "可选：指定需要更新的二进制包名，支持多个包名"
 	args.process "$@"
 
+	ensure_download_dir
+
 	requests.init 2> /dev/null || {
 		log.error "Failed to initialize requests module"
 		exit 1

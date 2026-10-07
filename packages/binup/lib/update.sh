@@ -36,6 +36,7 @@ cmd_update() {
 	args.init
 	args.process "$@"
 
+	ensure_download_dir
 	github_token
 	requests.init "-4" 2> /dev/null || {
 		log.error "Failed to initialize requests module"
