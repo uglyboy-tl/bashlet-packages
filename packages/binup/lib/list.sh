@@ -35,7 +35,8 @@ cmd_list() {
 			continue
 		}
 
-		download_time=$(stat -c "%.19y" "$file_path" 2> /dev/null || stat -c "%y" "$file_path" 2> /dev/null | cut -d'.' -f1)
+		# 两个分支都是 GNU stat（BSD 是 stat -f），兜底分支永不生效
+		download_time=$(stat -c "%.19y" "$file_path" 2> /dev/null || true)
 		console.layout.item.mid "当前版本: $current_version"
 		console.layout.item.mid "文件: $(basename "$file_path")"
 		console.layout.item.mid "下载时间: $download_time"
