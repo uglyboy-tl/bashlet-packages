@@ -99,7 +99,7 @@ set -euo pipefail
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"   # 包根
 source "$PROJECT_ROOT/lib/std/import.sh"
 
-.env  # 加载包目录的本地环境（脚本目录优先，回退当前工作目录）
+.env  # 加载包目录的本地环境（只取调用方脚本所在目录；裸文件名运行时该目录即 CWD）
 
 import core/log
 import core/args
