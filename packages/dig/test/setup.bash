@@ -10,10 +10,14 @@ _dig_setup() {
 	# 隔离用户级配置：否则 dig.settings.load 会读开发机的 ~/.config/dig/config.toml，
 	# 结果随机器漂移（本机那里就写着 proxy.url）
 	export XDG_CONFIG_HOME="$BATS_TEST_TMPDIR/xdg"
-	unset DIG_PROXY
+	# 隔离结果缓存：否则用例会读到开发机 ~/.cache/dig 里的旧结果，或写脏它
+	export XDG_CACHE_HOME="$BATS_TEST_TMPDIR/cache"
 	_fast_load source "$PROJECT_ROOT/dig.sh"
 	# settings.load 会逐行解析 config.toml，同样吃 trap 开销
 	_fast_load dig.settings.load
+	# 必须在加载之后清：dig.sh 顶部会 source 包内 .env，开发机上那里写着 DIG_PROXY；
+	# 不清掉的话「连不上」会被代理拦成 HTTP 503，探活的「网络不通」分支就测不到了
+	unset DIG_PROXY
 }
 
 # 对上一次 run 的 $output 跑一段 jq 过滤，结果写回 $output。

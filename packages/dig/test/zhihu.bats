@@ -7,11 +7,11 @@ setup() {
 	_dig_setup
 }
 
-@test "zhihu.fetch: 传输层失败报「网络不通」，不是 HTTP 0" {
+@test "zhihu.fetch: 传输层失败报「网络不通」，不是 HTTP 0（经由 dig.http.request）" {
 	export ZHIHU_ACCESS_SECRET=x
 	# 桩掉底层请求，模拟 curl exit 7（连接被拒）：status_code 是 0，不是 000
-	requests.get() { printf '%s' '{"status_code":0,"curl_exit":7,"body":"","headers":{}}'; }
-	run zhihu.fetch /x
+	requests.request() { printf '%s' '{"status_code":0,"curl_exit":7,"body":"","headers":{}}'; }
+	DIG_RETRY=0 run zhihu.fetch /x
 	assert_failure
 	assert_output --partial "网络不通"
 	refute_output --partial "HTTP 0"

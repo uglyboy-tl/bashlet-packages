@@ -46,3 +46,39 @@ JSON
 	assert_jq '[.id,.title,.author,.engagement.comments,.engagement.upvotes,(.tags|join(","))]'
 	assert_output '["a/b#7","T","u",5,3,"discussion,Q&A,answered"]'
 }
+
+# ========== -u：按 URL 直取单条 ==========
+
+@test "github.search_url: 仓库走 REST /repos/<o>/<r>，对齐后过 map_repos" {
+	gh() {
+		[[ $1 == api && $2 == "repos/a/b" ]] || return 1
+		printf '%s' '{"full_name":"a/b","html_url":"https://github.com/a/b","description":"D",
+			"stargazers_count":10,"forks_count":2,"created_at":"2018-01-01T00:00:00Z",
+			"updated_at":"2026-10-01T00:00:00Z","language":"Rust"}'
+	}
+
+	run github.search_url "https://github.com/a/b"
+	assert_success
+	assert_jq '[.id,.source,.text,.author,.created_at,.engagement.stars,(.tags|join(","))]'
+	assert_output '["a/b","github","D","a","2026-10-01T00:00:00Z",10,"Rust"]'
+}
+
+@test "github.search_url: pull 也走 issues 端点，pull_request 进 tags" {
+	gh() {
+		[[ $1 == api && $2 == "repos/a/b/issues/7" ]] || return 1
+		printf '%s' '{"number":7,"html_url":"https://github.com/a/b/pull/7","title":"T","body":"B",
+			"user":{"login":"u"},"created_at":"2026-01-01T00:00:00Z","comments":5,
+			"state":"open","pull_request":{"url":"x"}}'
+	}
+
+	run github.search_url "https://github.com/a/b/pull/7"
+	assert_success
+	assert_jq '[.id,.url,(.tags|join(",")),.engagement.comments]'
+	assert_output '["a/b#7","https://github.com/a/b/pull/7","open,pr",5]'
+}
+
+@test "github.search_url: URL 不成形时报错（路由由 test/fetch.bats 的表驱动用例覆盖）" {
+	run github.search_url "https://github.com/a"
+	assert_failure
+	assert_output --partial "不是合法的 GitHub 仓库 / issue URL"
+}

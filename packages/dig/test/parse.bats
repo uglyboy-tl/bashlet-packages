@@ -44,6 +44,32 @@ line2 &amp; more</title></entry></a>' > "$BATS_TEST_TMPDIR/m.xml"
 	assert_output $'T\tN'
 }
 
+# jq 的 capture/match 不匹配时返回 empty（不是报错），所以「缺属性/缺标签」时很容易整行消失。
+# 这两条例就是盯着这个坑。
+@test "parse.xml.records: 某条记录缺该属性时给空串，行不能消失" {
+	printf '%s' '<r><p id="1">a</p><p>b</p></r>' > "$BATS_TEST_TMPDIR/d.xml"
+	run parse.xml.records p '@id,#' < "$BATS_TEST_TMPDIR/d.xml"
+	assert_success
+	[ "${#lines[@]}" -eq 2 ] || {
+		echo "应输出 2 行，实得 ${#lines[@]}"
+		return 1
+	}
+	assert_line --index 0 "1	a"
+	assert_line --index 1 $'\tb'
+}
+
+@test "parse.xml.records: 缺标签的记录整行保留为空值" {
+	printf '%s' '<r><p><t>x</t></p><p><n>y</n></p></r>' > "$BATS_TEST_TMPDIR/e.xml"
+	run parse.xml.records p 't,#' < "$BATS_TEST_TMPDIR/e.xml"
+	assert_success
+	[ "${#lines[@]}" -eq 2 ] || {
+		echo "应输出 2 行，实得 ${#lines[@]}"
+		return 1
+	}
+	# "#" 是记录原始正文（这里是 <t>x</t>），重点是「缺标签那一行不能消失」
+	assert_line --index 0 $'x	<t>x</t>'
+}
+
 @test "parse.json.embedded: 花括号配对忽略字符串里的括号与转义" {
 	printf '%s' 'x var ytInitialPlayerResponse = {"a":{"b":"}}{x\"y"}};var meta=1;</script>' > "$BATS_TEST_TMPDIR/pg.html"
 	run parse.json.embedded ytInitialPlayerResponse < "$BATS_TEST_TMPDIR/pg.html"

@@ -22,6 +22,17 @@ so.options() {
 
 so.probe() { dig.http.probe "https://api.stackexchange.com/2.3/info?site=stackoverflow"; }
 
+# 从问题 URL 抠出问题号：/questions/123 或 /q/123
+so.url.id() {
+	local u="$1"
+	if [[ $u =~ /(questions|q)/([0-9]+) ]]; then
+		printf '%s' "${BASH_REMATCH[2]}"
+		return 0
+	fi
+	return 1
+}
+
+# 只认 stackoverflow.com：其它 StackExchange 站点要猜 -s 的 site 名，映射容易错
 so.search() {
 	[[ -n $DIG_QUERY ]] || {
 		log.error '需要查询词：dig so "关键词"（-s 可换 StackExchange 站点）'
@@ -53,6 +64,17 @@ so.search() {
 	else
 		printf '%s' "$body" | so.map "$site" | schema.pipe "$DIG_AFTER" | schema.limit "$DIG_LIMIT"
 	fi
+}
+
+# 单条：questions/<id> 的响应用于 {items:[…]}，与搜索同形，所以直接过 so.map
+so.search_url() {
+	local url="$1" id body
+	id="$(so.url.id "$url")" || {
+		log.error "不是合法的 Stack Overflow 问题 URL：$url"
+		return 1
+	}
+	body="$(dig.http.get "https://api.stackexchange.com/2.3/questions/$id" "site=stackoverflow" "filter=withbody")" || return 1
+	printf '%s' "$body" | so.map stackoverflow | schema.pipe 0 | schema.limit 1
 }
 
 so.map() {
@@ -114,4 +136,5 @@ so.answers() {
       end'
 }
 
-source.register so "Stack Exchange 问答（-s 换站点，-a N 抓高赞回答）" "tier:core period:yes proxy:no key:none" "" ""
+source.url.register so stackoverflow.com
+source.register so "Stack Exchange 问答（-s 换站点，-a N 抓高赞回答）" "tier:core period:yes proxy:no key:none"

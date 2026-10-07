@@ -84,36 +84,72 @@ dig x --tweet <url|id>      # 单推/线程，走 syndication（零凭证也能�
 | Nitter / twstalker / socialgrep | ❌ 连不上 / 403 |
 | RSSHub 公共实例 | ❌ 302 Cloudflare |
 
-## 2. Reddit —— 免费 OAuth，不需要用户 cookie
+## 2. Reddit —— 免 key 走 Arctic Shift（OAuth 已变成审批制）
 
-**为什么必须走 OAuth**：匿名 `.json` 全路径 403（`www.reddit.com` / `old.reddit.com` /
-`api.reddit.com`，带浏览器 UA 也一样，实测 2026-10-06）。社区共识是「Reddit 的 .json 端点
-2026 年已死」。
+> **2026-10-07 已接线**：`dig reddit -s <sub> "词"`（`-r N` 抓嵌套评论树），免 key、无需代理。
+> 本节保留为端点速查与「将来补 OAuth」的方案，接线细节见 `sources.md` 与 `lib/sources/reddit.sh`。
 
-**方案**：在 <https://www.reddit.com/prefs/apps> 建一个 **script** 类型的 app（免费，2 分钟），
-拿 `client_id` / `client_secret`，然后：
+**先记住三个日期**（2026-10-06~07 实测 + 官方/二手混查；自助创建已关，这几个日期现在只对**已获批**的
+应用有意义）：新 app 申请 **2026-10-31** 截止；官方 RSS **2026-11-13** 停止；公共 Data API 公告称
+**2027-03** 前关闭（口径存疑，官方帖题为「Moving Data API apps to the Developer Platform」）。
+
+**免 key 路径（推荐主体）：Arctic Shift**
 
 ```bash
-# 1) 拿 token（client_credentials，无需用户登录）
-curl -s -u "$REDDIT_CLIENT_ID:$REDDIT_CLIENT_SECRET" \
-  -d 'grant_type=client_credentials' -A 'dig/0.1' \
-  https://www.reddit.com/api/v1/access_token
-# 2) 搜索 / 评论
-curl -s -H "Authorization: Bearer $TOKEN" -A 'dig/0.1' \
-  'https://oauth.reddit.com/search?q=TOPIC&sort=relevance&t=month&limit=20'
-curl -s -H "Authorization: Bearer $TOKEN" -A 'dig/0.1' \
-  'https://oauth.reddit.com/r/SUBREDDIT/comments/ID?limit=50'
+# 列表（subreddit/author 必给一个）
+curl -s 'https://arctic-shift.photon-reddit.com/api/posts/search?subreddit=linux&limit=100&sort=desc'
+# sub 内关键词搜索（跨全站不行：?query= 不带 subreddit/author 会直接报错）
+curl -s 'https://arctic-shift.photon-reddit.com/api/posts/search?subreddit=linux&query=bash&limit=50'
+# 嵌套评论树，一次到位（不用展开 more stub）
+curl -s 'https://arctic-shift.photon-reddit.com/api/comments/tree?link_id=t3_<id>&limit=9999'
 ```
 
-- 限额 100 req/min（认证后），必须带非默认 `User-Agent`。
-- `.json` 后缀在 `oauth.reddit.com` 上不加。
+- 实测数据是**当天**的（`created_utc` 对得上），不是归档快照；单次 `limit` ≤100（`auto` 可到 1000），
+  `fields=` 可裁字段，`format=json|rss|jsonfeed`。
+- 失败是**容量型背压**：连发 5 次 1 次超时，或 `422 {"error":"Timeout. Maybe slow down a bit"}`，
+  无 `X-RateLimit` 头可读。要分三类处理：`HTTP != 200` / JSON 体里的 `error`（200 与 422 都可能带）/ 连接超时。
+- 单人维护、无 SLA。全局关键词搜索只能靠「遍历 subreddit 列表」近似。
 
-**实测过的替代（都不够用）**：
+### 为什么不做 OAuth（2026-10-07 实测 + 一手/二手混查）
+
+1. **自助创建已关闭**：在 `reddit.com/prefs/apps` 点创建后，页面只回一句
+   「In order to create an application or use our API you can read our full policies here:
+   <Responsible Builder Policy>」——拿不到 `client_id`。Reddit 2025-11 发布 Responsible Builder
+   Policy 的同时终止了自助 API key（「打开 prefs/apps、点 create app、秒拿凭证」那条路没了）。
+2. **`developers.reddit.com/app-registration` 不是这条路**：它要的是 **Automated account**——一个专门
+   给应用用的 Reddit 账号（字段要用户名，填邮箱会一直禁用 Continue），产出的是 **Devvit 应用**：跑在
+   Reddit 自己的服务器上、只对**你自己当 mod 的 sub** 有效，**给不了本地 CLI 用的 OAuth 凭证**。
+3. **唯一的官方路径是人工审批**：走 Developer Support 表单
+   <https://support.reddithelp.com/hc/en-us/requests/new?ticket_form_id=14868593862164>，
+   写清用途 / 数据范围 / 涉及哪些 subreddit / 预期请求量。Reddit 自称多数申请 7 天响应。
+   社区汇总的通过率现实（二手，但方向一致）：个人脚本**几乎不批**；学术需机构伦理证明（中等）；
+   版主工具成功率最高（10 万+ 订阅的 sub 尤甚）；商用基本无望（除非企业档，$10k/月起）。
+4. **2025-11 前的旧凭证仍然有效**——所以这不是「大家一起被断」，而是「新人没有门」。
+
+**结论：OAuth 不值得做**。它能换来的只有「跨全站关键词搜索」，代价是一个需要人工审批、通过率低、
+且 2027-03 之后是否存续都不确定的凭证；跨全站搜索改用「curated subreddit 列表」近似即可。
+
+（若将来真拿到凭证，流程本身没变，照下面这段即可：）
+
+```bash
+TOKEN=$(curl -s -X POST -u "$CLIENT_ID:$CLIENT_SECRET" \
+  -A "linux:dig:v0.1 (by /u/<你的用户名>)" \
+  -d grant_type=client_credentials \
+  https://www.reddit.com/api/v1/access_token | jq -r .access_token)
+curl -s -A "linux:dig:v0.1 (by /u/<你的用户名>)" -H "Authorization: bearer $TOKEN" \
+  'https://oauth.reddit.com/r/linux/new?limit=100'
+```
+
+- UA 格式是硬要求：`<platform>:<app ID>:<version> (by /u/<username>)`，官方明说**不得撒谎**。
+- 端点只走 `oauth.reddit.com`（不加 `.json`），认证后 100 QPM / client_id（滚动 10 分钟均值）。
+
+**已死 / 将死（不要当依赖）**：
 
 | 方案 | 结论 |
 | --- | --- |
-| `api.pullpush.io/reddit/search/{submission,comment}` | ✅ 免 cookie，**连评论都能关键词搜**；但连续性 429（间隔 6s 仍 429，实测 5/5 失败），只适合偶尔手动查 |
-| `arctic-shift.photon-reddit.com/api/posts/search` | ✅ 可达，但**必须给 `subreddit` 或 `author`**，没有关键词搜索，只能当「抓某板块」 |
+| `api.pullpush.io/reddit/search/*` | ❌ **不是限流，是付费墙**：实测 429 且正文明说「不为 agent 提供免费抓取资源」；摄取停在 2025-05 |
+| 官方 RSS（`/r/<sub>/new/.rss`、`/search.rss?q=`） | ⚠️ 公告 2026-11-13 停，只剩几周，只能当过渡 |
+| 匿名 `.json` | ❌ 本机全 403（**换浏览器 UA 无效**，UA 不是解药）；第三方博客称「公开 `.json` 仍可用、约 10 req/min」，与实测冲突——差异很可能来自出口 IP（我们走代理，IP 被标记），**不按可用处理** |
 
 ## 3. Bluesky —— 需要免费 app password
 
@@ -160,6 +196,7 @@ https://api.smartrecruiters.com/v1/companies/SLUG/postings
 | **npm / PyPI 下载量** | 实测可用（`api.npmjs.org/downloads/point/last-month/react`、`pypistats.org/api/packages/x/recent`），是「这个库真的被用吗」的信号，但不是讨论型载体，暂不单独立源 |
 | **小红书 / 微博 / 抖音** | 卡在 `x-s` / `x-t` / `x-rap-param` 等 JS 签名，纯 Bash 无解（见 `sources.md` 第 4 节） |
 | **豆瓣** | 见 `sources.md` 第 4 节：免密钥端点静默限流，且增量是书目元数据而非讨论 |
+| **微信公众号** | 本机 curl 拿不到（302 滑块验证）；**已接**：走云端浏览器只按 URL 取正文 —— 见第 7 节 |
 
 ## 6. 判断标准（为什么反复否决）
 
@@ -168,3 +205,62 @@ https://api.smartrecruiters.com/v1/companies/SLUG/postings
 - 被否掉的都是「网页检索或已有源已经覆盖」（PubMed、GitLab）、
   「拿不到就不要再试」（Invidious、Nitter）、或「需要 JS 签名而拒绝重方案」（小红书）。
 - 被记下来的都是「增量明确、路径已有实测、只差凭证或维护机制」（X、Reddit、Bluesky、招聘板）。
+
+## 7. 微信公众号 —— 本地 curl 拿不到，云端浏览器能拿（2026-10-07 实测）
+
+**结论：已接（`wechat` 源，只按 URL 取，走 Cloudflare Browser Run）。** 下面 7.1-7.3 是「为什么本地路线都不行」的
+实测存档；7.4 是最后的解法与边界。
+
+### 7.1 为什么拿不回：302 到滑块验证
+
+拿 58 条 GitHub 上抓来的真实文章长链，逐个单次请求（不并发、不循环轰炸，排除频率因素）：
+
+| UA | 结果 |
+| --- | --- |
+| curl 默认 / 桌面 Chrome / Googlebot | **HTTP 302** → `mp.weixin.qq.com/mp/wappoc_appmsgcaptcha?poc_token=…` |
+| **MicroMessenger 8.0.49**（微信内置浏览器） | 同上，**没有区别** |
+
+- 302 响应带 `set-cookie: poc_sid=…`，body 是「未知错误」页（`<title>未知错误</title>`）。
+- 出口 IP 是 `221.220.132.131`（中国联通北京 AS4808）—— **不是境外 IP 或 DNS 污染问题**。
+- 流传很广的「UA 里带 `MicroMessenger` 就能过」**已经过时**；要过只能浏览器解滑块，
+  或复用已经验证过的会话 cookie（dig 明确不抓浏览器 cookie）。
+- `weixin.sogou.com/weixin?type=2&query=` 返回 200 但结果里 0 条 `mp.weixin.qq.com` 链接
+  （反爬/JS 渲染）；而且它只能做发现，不解决正文。
+
+### 7.2 微信读书官方 skill 也没有文章正文接口
+
+官方 skill 自报家门：`{"api_name":"/_list"}` 列出全部 17 个接口 ——
+`/book/{info,chapterinfo,bestbookmarks,bookmarklist,getprogress,readreviews,recommend,similar,underlines}`、
+`/discover/interact/type3`、`/readdata/detail`、`/review/{list,list/mine,single}`、`/shelf/sync`、
+`/store/search`、`/user/notebooks`。**没有一个返回文章正文。**
+
+`/store/search` 知道「文章」这一组存在（`type=6`，`scopeCount=350`），但 `scope=4` 只回组头，
+`books` 为空 —— 文章条目没随请求返回，也没有后续接口能取正文。
+
+（`/book/chapterinfo` 的 `chapters[].isMPChapter` 说明公众号内容会以「章节」形式收进某些书，
+但那个接口只给目录，不给章节正文。）
+
+### 7.3 第三方路线（都不接）
+
+| 方案 | 为什么不接 |
+| --- | --- |
+| wechat2rss（xlab.app） | 免费额度有限、要账号；是别人的常驻服务 |
+| wewe-rss（自部署，原理基于微信读书） | 要自己跑服务 + 登录态，dig 从「纯 curl 零依赖」变成「要维护一个后端」 |
+| feeddd 等聚合源 | 覆盖有限（按公众号订阅，不能按关键词） |
+| 新榜 / 极致了等商业 API | 要付费凭证 |
+
+### 7.4 解法：Cloudflare Browser Run（能读公众号与 v2ex，读不了知乎）
+
+| 目标 | 云端浏览器 `/markdown` | 说明 |
+| --- | --- | --- |
+| 微信公众号正文 | ✅ 能 | 短链 `/s/<id>` 与带 `poc_token` 的长链都拿到 title / author / 正文（30KB 量级），**不需要 poc_token** |
+| V2EX 主题页 | ✅ 能 | 本机直连 `www.v2ex.com` 超时，云端出口能到；顺带拿到渲染后的回复（补上 API 2.0 要 PAT 的缺口） |
+| 知乎（含专栏） | ❌ 不能 | 同一出口回 `40362 您当前请求存在异常` —— 它挡的是 IP/指纹，不是渲染 |
+| 任意 JS 页 | ✅ 能 | 但默认不放开（见下） |
+
+- 接线形态：能力抽成 `lib/browser.sh`，`wechat` 与 `v2ex` 只声明「取这个 URL 的正文」；
+  `dig fetch <公众号/v2ex 链接>` 走同一套路由表。
+- 免费档限流 **REST 6 次/分钟**（1 次/10 秒）：只做单条，不做批量。
+- 默认**不**给「认不出的 URL」兜底：`DIG_FETCH_FALLBACK=1` 才开——否则 dig 就从「按站点取数」
+  漂成「通用抓取器」，「取不到就取不到」那条边界就没了。
+- 早期的评估探针（`packages/dig/experiments/cloudflare-probe.sh`）已删，逻辑落在上面两个文件里。

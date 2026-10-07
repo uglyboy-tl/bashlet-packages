@@ -101,10 +101,28 @@ dig zhihu "露营装备"         # 知乎（需要 ZHIHU_ACCESS_SECRET）
 | `-p, --period <窗口>` | `last24h` / `pastweek` / `pastmonth` / `pastyear` / `all`；源侧不支持时退化为客户端过滤 |
 | `--json` | 输出 JSONL（见下），默认输出人类可读文本 |
 | `-o, --output FILE` | 落盘；多源结果各写一个文件，由调用者自行比较 |
+| `--no-cache` | 跳过结果缓存，强制回源（默认同一个查询一天内直接回放缓存） |
 
-统一输出：默认人类可读，`--json` 时输出 **JSONL**（一行一个条目）——
+统一输出：默认人类可读——每条先一行元数据，再一行 `text` 预览（压缩空白、截断到 200 字）；
+`--json` 时输出 **JSONL**（一行一个条目，含完整 `text`）——
 选择 JSONL 而不是单个 JSON 数组，是为了让 shell 管道能 `grep`/`head`/逐行 `jq`，
 调用者也能逐条流式处理而不必读进内存。
+
+> 预览是必须的：`-t`（B 站字幕）/ `-d`（弹幕）/ `-c`（HN 评论树）/ `-a`（SO 高赞答案）
+> 把正文抓进 `text`，如果默认输出不显示它，这些选项看上去就像没生效（research 实测过两次）。
+
+## 结果缓存
+
+同一个查询（源 + 查询词 + 条数 + 窗口 + 该源的全部实参）在 TTL 内重复跑，直接回放上次的结果，不再打上游。
+实参里也含 `--json` / `-o` 这类只影响输出的开关——宁可多算一份缓存，也不漏掉任何可能影响结果的输入。
+上游多是免费/社区服务（Arctic Shift、sov2ex 等）且有容量背压，重复查询纯属浪费。
+
+- 存储用 bashlet 的 `std/cache`，落在 `$XDG_CACHE_HOME/dig/result/<哈希>`；TTL 默认一天（`DIG_CACHE_TTL`）。
+- **只缓存成功结果** —— 失败缓存下来会把一次网络抖动记一整天，那是「失败要响」的反面。
+- 命中会打一行 INFO（stderr，不污染 JSONL）；要最新数据用 `--no-cache` 或 `DIG_NO_CACHE=1`。
+- 探活（`dig doctor`）**不走缓存**，它必须实时。
+- HTTP 层的条件缓存（`ext/requests.cache`）**没接**：dig 的重复是「同一个问题」而不是「同一个 URL」，
+  每条 URL 都不同（discourse 多实例、bilibili 每条多个请求、`-r` 逐条），那层命中不了。
 
 ## 条目 schema
 
@@ -135,7 +153,7 @@ dig zhihu "露营装备"         # 知乎（需要 ZHIHU_ACCESS_SECRET）
 
 ## 源适配器契约
 
-包内 `lib/<源名>.sh`，用 `import <源名>` 加载（包私有模块，不进 `lib/core|std|ext`）。
+包内 `lib/sources/<源名>.sh`，用 `import sources/<源名>` 加载（包私有模块，不进 `lib/core|std|ext`）。
 
 每个源模块导出：
 
@@ -144,7 +162,7 @@ dig zhihu "露营装备"         # 知乎（需要 ZHIHU_ACCESS_SECRET）
 <源>.map              # 站点响应 -> 条目对象流（纯函数，不触网，可离线测）
 <源>.options          # 可选，声明该源特有参数
 <源>.probe            # 可选，探活：0=可达 1=被拒 2=网络不通 3=缺依赖
-source.register <名> <说明> <caps> <依赖> <凭证>   # 末尾声明，dig sources / doctor / 子命令注册都读它
+source.register <名> <说明> <caps> <依赖>   # 末尾声明，doctor / 子命令注册 / 默认窗口都读它
 ```
 
 公共变量由入口统一解析后传给源模块（`DIG_QUERY` / `DIG_LIMIT` / `DIG_PERIOD` / `DIG_AFTER` /
@@ -170,46 +188,75 @@ parse.xml.records <记录标签> <字段spec>  # XML → TSV；spec: tag / *tag�
 
 约定：
 
-- **keyless 优先**。需要密钥的源必须在 `<源>.options` 的说明、`source.register` 的凭证参数
-  和 README 里写明，并在缺密钥时给出
-  明确的「未配置 X，怎么配」提示，而不是静默返回空。
+- **keyless 优先**。需要密钥的源必须在 `<源>.options` 的说明、`env.example` 与 README 里写明，
+  并在缺密钥时给出明确的「未配置 X，怎么配」提示，而不是静默返回空。
 - **失败要响**。源挂了就报错退出，不要返回空数组假装「没搜到」，
   更不要把网络不通说成没有结果（本机很多源需要代理，见 `docs/sources.md`）。
+
+### dig fetch：URL → 源 的路由
+
+`dig fetch <url>` 是检索的互补：`dig <源> "<词>"` 是手上没有 URL、去源里找；已经有链接时不必再搜一遍，
+交给「认领它的源」把这一条取全。框架（`lib/fetch.sh`）只有通用机制——host 归一化、子域匹配、
+按 `source.list` 顺序询问、认不出时报错——**零站点知识**：URL 长什么样、该打哪个端点，都由各源自己回答。
+
+- `<源>.url.route <url>`：认领本源的 URL → stdout 打印该源的参数（`-u <url>`）；不是本源的 host → 返回 1
+  （静默地问下一个源）；是本源的 host 但形式不对 → 返回 2 并把原因写 stderr，框架直接失败、不再问别的源
+  （否则用户会看到「认不出这个 URL」这种误导性报错）。
+- 源侧用 `-u/--url` 接住，抠出 id 走详情端点，产物过该源**现有的 map**，再 `schema.pipe 0`——
+  映射规则只写一遍。
+- `cmd_fetch` 特意不走 `args.process`：源特有的选项（`-r 3`、`-T issues`）只有源的解析器认得，
+  在外层先解析会把它们当未知选项拒掉。所以约定 **URL 必须是第一个实参**，其余原样转给源。
+- 缓存键含 `-u <url>`，同一链接重复取会命中缓存，`--no-cache` 照常生效。
+
+### 能力模块：`lib/browser.sh`（云端无头浏览器）
+
+它不是源，是可被复用的能力：Cloudflare Browser Run 的 `/markdown`
+（`browser.available` / `creds.check` / `probe` / `markdown` / `page`）。
+
+消费者有三个：`wechat`（公众号正文）、`v2ex`（按 URL 取主题，顺带补上回复楼层那个老缺口）、
+以及 `DIG_FETCH_FALLBACK=1` 时 `dig fetch` 的兜底。独立成一层的理由：**「本地拿不到正文」是一类问题**，
+将来换后端（自建 crawl4ai 之类）只改这一个文件；反过来，源里只留「我要这个 URL 的正文」这一句。
+
+`doctor` 会给它单列一行（不是源，但决定上面三个用途能不能用）。
 
 ## 目录
 
 ```
 packages/dig/
 ├── dig.sh              # 入口：参数解析 + 子命令分发
-├── SKILL.md            # agent skill 定义（脚本路径 scripts/dig）
+├── SKILL.md            # research skill 正文（随 skill 分发）
+├── references/dig.md   # dig 取数方法论（随 skill 分发，执行者开工前读）
 ├── config.toml         # 默认 limit / period
 ├── lib/
 │   ├── core|std|ext    # bashlet 链接
 │   ├── common.sh       # 网络入口、重试、公共选项解析
 │   ├── parse.sh        # 从非 JSON 文本里取结构的**唯一**入口（内嵌 JSON、XML→TSV）
 │   ├── schema.sh       # 条目 JSONL 构造与校验（本地时间、URL 规范化）
+│   ├── source.sh       # 源注册表（source.register / source.list / source.cap）
 │   ├── doctor.sh       # 探活
-│   ├── hn.sh           # 各源适配器
-│   └── ...
-├── docs/
+│   └── sources/        # 源适配器，一个站点一个文件
+│       ├── index.sh    # 装载表：新增源在这里加一行 import
+│       └── hn.sh       # 各源适配器
+├── docs/               # 开发资料，不随 skill 分发
 │   ├── design.md       # 本文件
-│   └── sources.md      # 源清单：端点、密钥、限流、优先级（接线前先看这里）
-└── test/               # 与 lib 同名 *.bats
+│   ├── sources.md      # 源清单：端点、密钥、限流、优先级（接线前先看这里）
+│   └── candidates.md   # 未接线候选的完整方案与否决理由
+└── test/               # 与 lib 的模块同名 *.bats（保持平铺，嵌套路径会让 bats 的 load 变脆）
 ```
 
 ## 状态
 
-**已实现**：十三个源——`hn` / `github` / `so` / `arxiv` / `openalex` / `discourse` / `hf` /
-`zhihu` / `v2ex` / `bilibili` / `youtube` / `weread` / `polymarket`，加 `dig doctor` 与 `dig sources`。
+**已实现**：十四个源——`hn` / `github` / `so` / `arxiv` / `openalex` / `discourse` / `hf` /
+`zhihu` / `v2ex` / `reddit` / `bilibili` / `youtube` / `weread` / `polymarket`，加 `dig doctor`。
 跨源聚合已评估并砍掉（见「跨源融合为什么被砍掉」）。
 
 网络层统一带重试：传输层失败与 429/5xx 退避重试（`DIG_RETRY`，默认 2 次），其余 4xx 直接报错。
 
 **源分三层权重**（`caps` 里的 `tier:`，机器可读）：`core`（几乎每次调研都该跑）、
-`topic`（只在匹配的话题类型上用）、`niche`（极少用但不可替代）。`dig sources` 按这个分组输出。
+`topic`（只在匹配的话题类型上用）、`niche`（极少用但不可替代）。这个分层写在 `references/dig.md`。
 这是为了抵抗「源一多就想全跑」的惯性 —— dig 是要给一次具体调研做补充，不是聚合器。
 
-加一个源 = 在 `lib/` 加一个文件（末尾调 `source.register`）+ 在 `lib/sources.sh` 加一行 import。
+加一个源 = 在 `lib/sources/` 加一个文件（末尾调 `source.register`）+ 在 `lib/sources/index.sh` 加一行 import。
 `doctor` 与子命令注册都从注册表读，不需要改入口。
 
 未接线的候选源见 `docs/sources.md`。

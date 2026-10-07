@@ -60,6 +60,10 @@ require_fields
 JQ
 
 read -r -d '' _SCHEMA_JQ_RENDER << 'JQ' || true
+# 正文预览：-t/-d/-c/-a 抓进 text 的正文必须在默认输出里看得见（完整正文用 --json）
+def text_preview:
+  (. // "") | gsub("\\s+"; " ") | sub("^ +"; "") | sub(" +$"; "")
+  | if . == "" then "" else "  " + (if length > 200 then "\(.[0:200])…" else . end) + "\n" end;
 "\(.title // "(无标题)")\n  "
 + (([ "[" + (.source // "?") + "]",
       (.author // ""),
@@ -70,6 +74,7 @@ read -r -d '' _SCHEMA_JQ_RENDER << 'JQ' || true
       (.url // "")
     ] | map(select(. != "")) | join("  ·  ")))
 + "\n"
++ (.text | text_preview)
 JQ
 
 schema.now() { date -u +%Y-%m-%dT%H:%M:%SZ; }

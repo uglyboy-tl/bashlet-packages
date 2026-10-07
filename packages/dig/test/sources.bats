@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 
-# lib/sources.sh（源装载表）与注册表的一致性，以及「文档与注册表不漂移」。
+# lib/sources/index.sh（源装载表）与注册表的一致性，以及「文档与注册表不漂移」。
 # 各源自己的 mapper 测试在 test/<源>.bats。
 
 load 'test_helper/common-setup'
@@ -10,15 +10,15 @@ setup() {
 	_dig_setup
 }
 
-@test "sources: 每个已注册的源都有 lib/<源>.sh，且装载表里有对应的一行 import" {
+@test "sources: 每个已注册的源都有 lib/sources/<源>.sh，且装载表里有对应的一行 import" {
 	local s
 	for s in $(source.list); do
-		[ -f "$PROJECT_ROOT/lib/$s.sh" ] || {
-			echo "缺 lib/$s.sh"
+		[ -f "$PROJECT_ROOT/lib/sources/$s.sh" ] || {
+			echo "缺 lib/sources/$s.sh"
 			return 1
 		}
-		grep -q "^import $s$" "$PROJECT_ROOT/lib/sources.sh" || {
-			echo "lib/sources.sh 缺 import $s"
+		grep -q "^import sources/$s$" "$PROJECT_ROOT/lib/sources/index.sh" || {
+			echo "lib/sources/index.sh 缺 import sources/$s"
 			return 1
 		}
 	done

@@ -29,6 +29,29 @@ github.probe() {
 	return 1
 }
 
+# URL 的路径部分（去 scheme/host/query/fragment）：github.com/o/r/issues/1 → o/r/issues/1
+github.url.path() {
+	local u="$1"
+	u="${u#*://}"
+	u="${u#*/}"
+	printf '%s' "${u%%[?#]*}"
+}
+
+# 输出 "repo <o> <r>" 或 "issue <o> <r> <n>"；pull 也归到 issue（issues 端点响应里有 pull_request）
+github.url.parse() {
+	local url="$1" path
+	path="$(github.url.path "$url")"
+	if [[ $path =~ ^([^/]+)/([^/]+)/(issues|pull)/([0-9]+)(/.*)?$ ]]; then
+		printf 'issue %s %s %s' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[4]}"
+		return 0
+	fi
+	if [[ $path =~ ^([^/]+)/([^/]+)$ ]]; then
+		printf 'repo %s %s' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
+		return 0
+	fi
+	return 1
+}
+
 github.search() {
 	[[ -n $DIG_QUERY ]] || {
 		log.error '需要查询词：dig github "关键词"（-T issues|repos|code|commits）'
@@ -48,6 +71,46 @@ github.search() {
 			return 1
 			;;
 	esac
+}
+
+# 单条：REST 端点返回 snake_case 单对象，先对齐成 gh search 的 camelCase 形状再走
+github.search_url() {
+	local url="$1" kind o r n body parsed
+	parsed="$(github.url.parse "$url")" || {
+		log.error "不是合法的 GitHub 仓库 / issue URL：$url"
+		return 1
+	}
+	read -r kind o r n <<< "$parsed"
+
+	if [[ $kind == issue ]]; then
+		body="$(gh api "repos/$o/$r/issues/$n")" || return 1
+		printf '%s' "$body" | "$(schema.jq.bin)" -c --arg repo "$o/$r" '
+            [ {
+              repository: { nameWithOwner: $repo },
+              number: .number,
+              url: .html_url,
+              title: .title,
+              body: (.body // ""),
+              author: { login: (.user.login // "") },
+              createdAt: (.created_at // ""),
+              commentsCount: (.comments // 0),
+              state: (.state // ""),
+              isPullRequest: (.pull_request != null)
+            } ]' | github.map_issues | schema.pipe 0 | schema.limit 1
+	else
+		body="$(gh api "repos/$o/$r")" || return 1
+		printf '%s' "$body" | "$(schema.jq.bin)" -c '
+            [ {
+              fullName: .full_name,
+              url: .html_url,
+              description: (.description // ""),
+              stargazersCount: (.stargazers_count // 0),
+              forksCount: (.forks_count // 0),
+              createdAt: (.created_at // ""),
+              updatedAt: (.updated_at // ""),
+              language: (.language // "")
+            } ]' | github.map_repos | schema.pipe 0 | schema.limit 1
+	fi
 }
 
 github.search_issues() {
@@ -189,4 +252,5 @@ github.map_discussions() {
       }'
 }
 
-source.register github "GitHub 搜索（-T issues|repos|code|commits|discussions，走 gh）" "tier:core period:yes proxy:no key:none" "gh" ""
+source.url.register github github.com
+source.register github "GitHub 搜索（-T issues|repos|code|commits|discussions，走 gh）" "tier:core period:yes proxy:no key:none" "gh"

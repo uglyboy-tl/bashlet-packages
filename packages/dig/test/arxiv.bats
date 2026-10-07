@@ -41,3 +41,38 @@ XML
 	assert_line --index 0 --partial '"id":"http://arxiv.org/abs/1"'
 	assert_line --index 1 --partial '"id":"http://arxiv.org/abs/2"'
 }
+
+# ========== -u：按 URL 直取单条 ==========
+
+@test "arxiv.search_url: 打 id_list 查询并过 Atom 解析" {
+	dig.http.get() {
+		[[ $1 == "https://export.arxiv.org/api/query" && ${2:-} == "id_list=2103.00112v1" ]] || return 1
+		printf '%s' '<feed><entry><id>http://arxiv.org/abs/2103.00112v1</id>
+			<published>2021-03-01T00:00:00Z</published><title>TiT</title>
+			<summary>abs</summary><author><name>Kai Han</name></author></entry></feed>'
+	}
+
+	run arxiv.search_url "https://arxiv.org/abs/2103.00112v1"
+	assert_success
+	assert_jq '[.id,.url,.title,.author]'
+	assert_output '["http://arxiv.org/abs/2103.00112v1","https://arxiv.org/abs/2103.00112v1","TiT","Kai Han"]'
+}
+
+@test "fetch.route: arxiv 的 abs/pdf 都归到 arxiv，别的站不认" {
+	run fetch.route "https://arxiv.org/abs/2103.00112"
+	assert_success
+	[[ $output == "arxiv"$'\t'* ]]
+
+	run fetch.route "https://arxiv.org/pdf/2103.00112.pdf"
+	assert_success
+	[[ $output == "arxiv"$'\t'* ]]
+
+	run fetch.route "https://example.com/abs/1"
+	assert_failure
+}
+
+@test "arxiv.search_url: URL 里没有论文号时报「不是合法的 arXiv 论文 URL」" {
+	run arxiv.search_url "https://arxiv.org/abs/"
+	assert_failure
+	assert_output --partial "不是合法的 arXiv 论文 URL"
+}

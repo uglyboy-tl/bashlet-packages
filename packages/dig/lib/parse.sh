@@ -68,18 +68,22 @@ def xml_flat:
   | gsub("&#39;"; "'") | gsub("&amp;"; "&")
   | sub("^ +"; "") | sub(" +$"; "");
 
+# 注意：jq 的 match / capture 在**不匹配时返回 empty，而不是报错**，try/catch 兜不住——
+# `(try capture(..) catch null) as $m` 会让整段变成 empty（调用方的那个字段甚至整行消失）。
+# 所以统一「先 test 再 capture」，缺字段时明确给空串。
 def xml_one($body; $tag):
-  (try ($body | match("(?s)<" + $tag + "[^>]*>(?<v>.*?)</" + $tag + ">")) catch null) as $m
-  | if $m == null then "" else ($m.captures[0].string | xml_flat) end;
+  if ($body | test("(?s)<" + $tag + "[^>]*>")) then
+    ($body | capture("(?s)<" + $tag + "[^>]*>(?<v>.*?)</" + $tag + ">") | .v | xml_flat)
+  else "" end;
 
 def xml_many($body; $tag):
-  [ (try ($body | match("(?s)<" + $tag + "[^>]*>(?<v>.*?)</" + $tag + ">"; "g")) catch null) // empty
-    | .captures[0].string | xml_flat ]
+  [ ($body | [match("(?s)<" + $tag + "[^>]*>(?<v>.*?)</" + $tag + ">"; "g")] | .[].captures[0].string | xml_flat) ]
   | join(", ");
 
 def xml_attr($attrs; $name):
-  (try ($attrs | capture("(?:^|\\s)" + $name + "=[\"'](?<v>[^\"']*)")) catch null) as $m
-  | if $m == null then "" else $m.v end;
+  if ($attrs | test("(?:^|\\s)" + $name + "=[\"']")) then
+    ($attrs | capture("(?:^|\\s)" + $name + "=[\"'](?<v>[^\"']*)") | .v)
+  else "" end;
 JQ
 
 # 从 HTML/JS 文本里抠出 `var NAME = {...}` 那个对象。

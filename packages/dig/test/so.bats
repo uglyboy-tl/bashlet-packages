@@ -32,3 +32,25 @@ JSON
 	assert_success
 	assert_output ""
 }
+
+# ========== -u：按 URL 直取单条 ==========
+
+@test "so.search_url: 打 questions/<id> 端点并过 so.map" {
+	dig.http.get() {
+		[[ $1 == "https://api.stackexchange.com/2.3/questions/12345" ]] || return 1
+		printf '%s' '{"items":[{"question_id":12345,"link":"https://stackoverflow.com/q/12345",
+			"title":"T","body":"<p>b</p>","owner":{"display_name":"pg"},
+			"creation_date":1500000000,"score":7,"answer_count":2,"view_count":100,"tags":["bash"]}]}'
+	}
+
+	run so.search_url "https://stackoverflow.com/q/12345"
+	assert_success
+	assert_jq '[.id,.source,.text,.author,.engagement.score,(.tags|join(","))]'
+	assert_output '["12345","so","b","pg",7,"bash,stackoverflow"]'
+}
+
+@test "so.search_url: URL 不成形时报错（路由由 test/fetch.bats 的表驱动用例覆盖）" {
+	run so.search_url "https://stackoverflow.com/"
+	assert_failure
+	assert_output --partial "不是合法的 Stack Overflow 问题 URL"
+}

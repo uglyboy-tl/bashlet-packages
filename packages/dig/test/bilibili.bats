@@ -95,3 +95,64 @@ JSON
 	assert_success
 	assert_output '中文字幕'
 }
+
+# ========== -u：按 URL 直取单条（隐式 -t 1 -d 1）==========
+
+@test "bilibili.search_url: view 换 cid，弹幕进 text" {
+	dig.http.get() {
+		case "$1" in
+			*/x/web-interface/view)
+				printf '%s' '{"code":0,"data":{"bvid":"BV1xx","cid":1,"title":"T",
+					"owner":{"name":"A"},"pubdate":1700000000,
+					"stat":{"view":10,"danmaku":2,"reply":3},"tname":"科技","desc":"简介"}}'
+				;;
+			*/x/v1/dm/list.so) printf '%s' '<i><d p="1,1">dm1</d></i>' ;;
+			*/x/player/v2) printf '%s' '{"code":0,"data":{"subtitle":{"subtitles":[]}}}' ;;
+			*) return 1 ;;
+		esac
+	}
+	export BILI_SESSDATA=fake
+
+	run bilibili.search_url "https://www.bilibili.com/video/BV1xx411c7mD"
+	assert_success
+	assert_jq '[.id,.source,.title,.author,.text,.engagement.play]'
+	assert_output '["BV1xx","bilibili","T","A","dm1",10]'
+}
+
+@test "bilibili.search_url: 没有 BILI_SESSDATA 时只警告不失败，text 退回简介" {
+	unset BILI_SESSDATA
+	dig.http.get() {
+		case "$1" in
+			*/x/web-interface/view)
+				printf '%s' '{"code":0,"data":{"bvid":"BV1xx","cid":1,"title":"T",
+					"owner":{"name":"A"},"pubdate":1700000000,
+					"stat":{"view":1,"danmaku":0,"reply":0},"tname":"","desc":"简介"}}'
+				;;
+			*) return 1 ;;
+		esac
+	}
+
+	run bilibili.search_url "https://www.bilibili.com/video/BV1xx411c7mD"
+	assert_success
+	assert_output --partial "BILI_SESSDATA"
+	assert_output --partial '"text":"简介"'
+}
+
+@test "fetch.route: bilibili 的 BV/av 链接归到 bilibili，短链与别的站不认" {
+	run fetch.route "https://www.bilibili.com/video/BV1xx411c7mD"
+	assert_success
+	[[ $output == "bilibili"$'\t'* ]]
+
+	run fetch.route "https://www.bilibili.com/video/av170001"
+	assert_success
+	[[ $output == "bilibili"$'\t'* ]]
+
+	run fetch.route "https://b23.tv/abc"
+	assert_failure
+}
+
+@test "bilibili.search_url: URL 里没有 BV/av 号时报「不是合法的 B 站视频 URL」" {
+	run bilibili.search_url "https://www.bilibili.com/"
+	assert_failure
+	assert_output --partial "不是合法的 B 站视频 URL"
+}

@@ -15,6 +15,18 @@ import source
 # 该源的默认时间窗口（用户没显式给 -p 时生效）
 arxiv.probe() { dig.http.probe "https://export.arxiv.org/api/query?search_query=all:test&max_results=1"; }
 
+# 从论文 URL 抠出 id：/abs/2103.00112v1 或 /pdf/2103.00112.pdf
+arxiv.url.id() {
+	local u="$1" id
+	if [[ $u =~ /(abs|pdf)/([^/?#]+) ]]; then
+		id="${BASH_REMATCH[2]}"
+		id="${id%.pdf}"
+		printf '%s' "$id"
+		return 0
+	fi
+	return 1
+}
+
 arxiv.search() {
 	[[ -n $DIG_QUERY ]] || {
 		log.error '需要查询词：dig arxiv "主题"'
@@ -36,6 +48,17 @@ arxiv.search() {
 	printf '%s' "$body" | arxiv.map | schema.pipe "$DIG_AFTER" | schema.limit "$DIG_LIMIT"
 }
 
+# 单条：id_list 查询返回同样的 Atom feed，直接复用 arxiv.map
+arxiv.search_url() {
+	local url="$1" id body
+	id="$(arxiv.url.id "$url")" || {
+		log.error "不是合法的 arXiv 论文 URL：$url"
+		return 1
+	}
+	body="$(dig.http.get "https://export.arxiv.org/api/query" "id_list=$id" "max_results=1")" || return 1
+	printf '%s' "$body" | arxiv.map | schema.pipe 0 | schema.limit 1
+}
+
 # Atom -> TSV：published / id / title / summary / 全部作者
 arxiv.map() {
 	parse.xml.records entry 'published,id,title,summary,*name' |
@@ -55,4 +78,5 @@ arxiv.map() {
       }'
 }
 
-source.register arxiv "arXiv 论文摘要" "tier:topic period:pastyear proxy:no key:none" "" ""
+source.url.register arxiv arxiv.org
+source.register arxiv "arXiv 论文摘要" "tier:topic period:pastyear proxy:no key:none"

@@ -96,4 +96,4 @@ youtube.player() {
 	printf '%s' "$html" | parse.json.embedded ytInitialPlayerResponse
 }
 
-source.register youtube "YouTube 视频搜索（-t 补发布日期与简介，字幕不可得）" "tier:niche period:no proxy:yes key:none" "" ""
+source.register youtube "YouTube 视频搜索（-t 补发布日期与简介，字幕不可得）" "tier:niche period:no proxy:yes key:none"

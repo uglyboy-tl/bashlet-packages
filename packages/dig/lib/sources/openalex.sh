@@ -7,12 +7,33 @@
 import core/log
 
 import common
+import fetch
 import schema
 import source
 
 # 学术文献看被引数而非新鲜度：相关度排在前面的往往是老论文，套时间窗口会把结果清空，
 # 所以默认不筛时间（用户可以用 -p 自己收紧）。
 openalex.probe() { dig.http.probe "https://api.openalex.org/works?search=test&per-page=1"; }
+
+# 从 openalex.org/W123 或 api.openalex.org/works/W123 抠出作品 id
+openalex.url.work_id() {
+	local u="$1"
+	if [[ $u =~ (W[0-9]+) ]]; then
+		printf '%s' "${BASH_REMATCH[1]}"
+		return 0
+	fi
+	return 1
+}
+
+# 从 doi.org/10.1234/foo 抠出 DOI
+openalex.url.doi() {
+	local u="$1"
+	if [[ $u =~ doi\.org/([^?#]+) ]]; then
+		printf '%s' "${BASH_REMATCH[1]}"
+		return 0
+	fi
+	return 1
+}
 
 openalex.search() {
 	[[ -n $DIG_QUERY ]] || {
@@ -41,6 +62,30 @@ openalex.search() {
 	printf '%s' "$out" | openalex.map | schema.pipe "$DIG_AFTER" | schema.limit "$DIG_LIMIT"
 }
 
+# 单条：doi 走 filter 查询（响应已是 {results:[…]}）；W-id 走 /works/<id>（单对象，包一层）
+openalex.search_url() {
+	local url="$1" body
+	[[ -n ${OPENALEX_API_KEY:-} ]] && dig.auth.set "Bearer $OPENALEX_API_KEY"
+
+	if fetch.host.any "$url" doi.org; then
+		local doi
+		doi="$(openalex.url.doi "$url")" || {
+			log.error "不是合法的 DOI URL：$url"
+			return 1
+		}
+		body="$(dig.http.get "https://api.openalex.org/works" "filter=doi:$doi" "per-page=1")" || return 1
+	else
+		local id
+		id="$(openalex.url.work_id "$url")" || {
+			log.error "不是合法的 OpenAlex 作品 URL：$url"
+			return 1
+		}
+		body="$(dig.http.get "https://api.openalex.org/works/$id")" || return 1
+		body="$(printf '%s' "$body" | "$(schema.jq.bin)" -c '{ results: [.] }')"
+	fi
+	printf '%s' "$body" | openalex.map | schema.pipe 0 | schema.limit 1
+}
+
 openalex.map() {
 	"$(schema.jq.bin)" -c --arg query "${DIG_QUERY:-}" '
     # 摘要在 OpenAlex 里是倒排索引，按位置还原成正文
@@ -67,4 +112,5 @@ openalex.map() {
       }'
 }
 
-source.register openalex "OpenAlex 学术文献（含被引数与摘要）" "tier:topic period:all proxy:no key:optional" "" "OPENALEX_API_KEY"
+source.url.register openalex openalex.org doi.org
+source.register openalex "OpenAlex 学术文献（含被引数与摘要）" "tier:topic period:all proxy:no key:optional"

@@ -22,10 +22,10 @@ setup() {
 	assert_output '["1","weread","作者甲",930,100,7,"神作,电子书"]'
 }
 
-@test "weread.api.call: 传输层失败报「网络不通」，不是 HTTP 0" {
+@test "weread.api.call: 传输层失败报「网络不通」，不是 HTTP 0（经由 dig.http.request）" {
 	weread.key() { printf 'k'; }
-	requests.post() { printf '%s' '{"status_code":0,"curl_exit":7,"body":"","headers":{}}'; }
-	run weread.api.call /store/search keyword x
+	requests.request() { printf '%s' '{"status_code":0,"curl_exit":7,"body":"","headers":{}}'; }
+	DIG_RETRY=0 run weread.api.call /store/search keyword x
 	assert_failure
 	assert_output --partial "网络不通"
 	refute_output --partial "HTTP 0"
@@ -50,4 +50,34 @@ setup() {
 	run weread.check '{"errcode":-2010,"errmsg":"用户不存在"}'
 	assert_failure
 	assert_output --partial "errcode=-2010"
+}
+
+# ========== -i N：简介富化 ==========
+
+@test "weread.enrich_one: 把 /book/info 的 intro 填进 text" {
+	local line
+	line="$(weread.map < "$BATS_TEST_DIRNAME/fixtures/weread-search.json" | head -1)"
+	weread.api.call() { printf '%s' '{"intro":"三体讲的是…"}'; }
+
+	run weread.enrich_one "$line"
+	assert_success
+	run bash -c 'jq -r ".text" <<< "$1"' _ "$output"
+	assert_output '三体讲的是…'
+}
+
+@test "weread.enrich_one: 取不到简介时保留原行，不能用空串吞掉" {
+	local line
+	line="$(weread.map < "$BATS_TEST_DIRNAME/fixtures/weread-search.json" | head -1)"
+	weread.api.call() { return 1; }
+
+	run weread.enrich_one "$line"
+	assert_success
+	run bash -c 'jq -r "[.id, .title] | @tsv" <<< "$1"' _ "$output"
+	assert_output --partial "1"
+}
+
+@test "weread.enrich_one: 没有 id 的行原样返回" {
+	run weread.enrich_one '{"source":"weread","title":"x"}'
+	assert_success
+	assert_output '{"source":"weread","title":"x"}'
 }

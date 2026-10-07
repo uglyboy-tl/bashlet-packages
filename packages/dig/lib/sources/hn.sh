@@ -24,6 +24,16 @@ hn.options() {
 
 hn.probe() { dig.http.probe "https://hn.algolia.com/api/v1/search?query=test&hitsPerPage=1"; }
 
+# 从 item URL 抠出条目号：news.ycombinator.com/item?id=123
+hn.url.id() {
+	local u="$1"
+	if [[ $u =~ [\?\&]id=([0-9]+) ]]; then
+		printf '%s' "${BASH_REMATCH[1]}"
+		return 0
+	fi
+	return 1
+}
+
 hn.search() {
 	[[ -n $DIG_QUERY ]] || {
 		log.error '需要查询词：dig hn "关键词"（-T comments 可直接搜评论）'
@@ -54,6 +64,29 @@ hn.search_stories() {
 	n="$(dig.opt.natural 0 -c --comments)" || return 1
 
 	printf '%s' "$body" | hn.map | schema.enrich "$n" hn.enrich_one | schema.pipe "$DIG_AFTER" | schema.limit "$DIG_LIMIT"
+}
+
+# 单条：items 端点返回一个 item，字段与 search 的 hit 不同；先对齐成 hit 再走 hn.map，
+# 避免为直取另写一套字段映射。`text` 是 Ask HN 正文（链接帖通常为空）。
+hn.search_url() {
+	local url="$1" id body
+	id="$(hn.url.id "$url")" || {
+		log.error "不是合法的 HN item URL：$url"
+		return 1
+	}
+	body="$(dig.http.get "https://hn.algolia.com/api/v1/items/$id")" || return 1
+	printf '%s' "$body" | "$(schema.jq.bin)" -c '
+        { hits: [ {
+            objectID: (.id | tostring),
+            title: (.title // ""),
+            url: .url,
+            story_text: (.text // ""),
+            author: (.author // ""),
+            created_at: (.created_at // ""),
+            points: (.points // 0),
+            num_comments: ((.children // []) | length),
+            _tags: ([.type] | map(select(. != null and . != "")))
+          } ] }' | hn.map | schema.pipe 0 | schema.limit 1
 }
 
 hn.search_comments() {
@@ -125,4 +158,5 @@ hn.comments_text() {
     | join("\n\n---\n\n")'
 }
 
-source.register hn "Hacker News（-T stories|comments，-c N 抓评论树）" "tier:core period:yes proxy:no key:none" "" ""
+source.url.register hn news.ycombinator.com
+source.register hn "Hacker News（-T stories|comments，-c N 抓评论树）" "tier:core period:yes proxy:no key:none"

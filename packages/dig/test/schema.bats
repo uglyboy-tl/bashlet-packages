@@ -131,6 +131,25 @@ setup() {
 	assert_output '{"a":1}'
 }
 
+@test "schema.render: 人类可读输出带正文预览（压缩空白、超 200 字截断）" {
+	run schema.render <<< '{"source":"hn","title":"T","text":"hello   world","url":"https://x/"}'
+	assert_success
+	assert_line --index 2 "  hello world"
+
+	local long
+	long="$(printf '%0.sx' {1..300})"
+	run schema.render <<< "{\"source\":\"hn\",\"title\":\"T\",\"text\":\"$long\"}"
+	assert_success
+	assert_output --partial "$(printf '%0.sx' {1..200})…"
+	refute_output --partial "$(printf '%0.sx' {1..201})"
+}
+
+@test "schema.render: 没有 text 时不输出第三行" {
+	run schema.render <<< '{"source":"hn","title":"T","url":"https://x/"}'
+	assert_success
+	[ "${#lines[@]}" -eq 2 ]
+}
+
 @test "schema.render: 人类可读两行输出" {
 	run schema.render <<< '{"source":"hn","title":"Hi","author":"pg","created_at":"2025-01-01T00:00:00Z","url":"https://x/","engagement":{"points":3}}'
 	assert_success

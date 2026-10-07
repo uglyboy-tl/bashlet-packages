@@ -20,6 +20,34 @@ hf.options() {
 
 hf.probe() { dig.http.probe "https://huggingface.co/api/models?search=test&limit=1"; }
 
+# 从仓库 URL 抠出 type 与 id：/<o>/<m>、/datasets/<o>/<n>、/spaces/<o>/<n>
+hf.url.parse() {
+	local url="$1" path type
+	path="${url#*://}"
+	path="${path#*/}"
+	path="${path%%[?#]*}"
+	[[ $path == */* ]] || return 1
+
+	type="models"
+	case $path in
+		datasets/*)
+			type="datasets"
+			path="${path#datasets/}"
+			;;
+		spaces/*)
+			type="spaces"
+			path="${path#spaces/}"
+			;;
+		models/*)
+			type="models"
+			path="${path#models/}"
+			;;
+	esac
+	# 只接受 <owner>/<name> 两段（再多是文件树之类的子路径）
+	[[ $path =~ ^([^/]+)/([^/]+)$ ]] || return 1
+	printf '%s %s' "$type" "${BASH_REMATCH[1]}/${BASH_REMATCH[2]}"
+}
+
 hf.search() {
 	[[ -n $DIG_QUERY ]] || {
 		log.error '需要查询词：dig hf "模型或数据集关键词"'
@@ -47,6 +75,19 @@ hf.search() {
 	printf '%s' "$out" | hf.map "$type" | schema.pipe "$DIG_AFTER" | schema.limit "$DIG_LIMIT"
 }
 
+# 单条：/api/{models,datasets,spaces}/<id> 返回单对象，包成数组后过 hf.map
+hf.search_url() {
+	local url="$1" type id out parsed
+	parsed="$(hf.url.parse "$url")" || {
+		log.error "不是合法的 Hugging Face 仓库 URL：$url"
+		return 1
+	}
+	read -r type id <<< "$parsed"
+	[[ -n $type && -n $id ]] || return 1
+	out="$(dig.http.get "https://huggingface.co/api/$type/$id")" || return 1
+	printf '%s' "$out" | "$(schema.jq.bin)" -c '[.]' | hf.map "$type" | schema.pipe 0 | schema.limit 1
+}
+
 hf.map() {
 	local type="${1:-models}"
 	"$(schema.jq.bin)" -c --arg query "${DIG_QUERY:-}" --arg type "$type" "$_SCHEMA_JQ_LIB"'
@@ -66,4 +107,5 @@ hf.map() {
       }'
 }
 
-source.register hf "Hugging Face 模型 / 数据集（下载量与点赞）" "tier:topic period:all proxy:yes key:none" "" ""
+source.url.register hf huggingface.co
+source.register hf "Hugging Face 模型 / 数据集（下载量与点赞）" "tier:topic period:all proxy:yes key:none"

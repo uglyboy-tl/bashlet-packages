@@ -28,6 +28,21 @@ bilibili.options() {
 
 bilibili.probe() { dig.http.probe "$_BILI_API/x/web-interface/search/all/v2?keyword=test"; }
 
+# 从视频 URL 抠出 view 端点的参数：/video/BV… 或 /video/av123
+bilibili.url.param() {
+	local u="$1"
+	if [[ $u =~ /video/(BV[A-Za-z0-9]+) ]]; then
+		printf 'bvid=%s' "${BASH_REMATCH[1]}"
+		return 0
+	fi
+	if [[ $u =~ /video/av([0-9]+) ]]; then
+		printf 'aid=%s' "${BASH_REMATCH[1]}"
+		return 0
+	fi
+	return 1
+}
+
+# b23.tv 短链要读 302，先不接（返回 1 让别的源看）
 bilibili.search() {
 	[[ -n $DIG_QUERY ]] || {
 		log.error '需要查询词：dig bilibili "关键词"'
@@ -57,6 +72,68 @@ bilibili.search() {
 
 	printf '%s' "$out" | bilibili.map | schema.pipe "$DIG_AFTER" |
 		schema.enrich "$((dn > tn ? dn : tn))" bilibili.enrich_one "$dn" "$tn" | schema.limit "$DIG_LIMIT"
+}
+
+# view 端点的 .data 与搜索结果 item 形状不同；转成 item 后再交给 bilibili.map，
+# 避免为直取另写一套字段映射。
+bilibili.map_view() {
+	"$(schema.jq.bin)" -c '
+    { data: { result: [ { result_type: "video", data: [ {
+        bvid: .data.bvid,
+        title: (.data.title // ""),
+        author: (.data.owner.name // ""),
+        pubdate: (.data.pubdate // 0),
+        play: (.data.stat.view // 0),
+        danmaku: (.data.stat.danmaku // 0),
+        review: (.data.stat.reply // 0),
+        tag: "",
+        typename: (.data.tname // ""),
+        description: (.data.desc // "")
+      } ] } ] } }'
+}
+
+# 用户给视频链接就是想要里面的内容，所以 -u 隐式等于 -t 1 -d 1。
+# 没有 BILI_SESSDATA 时字幕拿不到：只 warn 不失败，text 退回弹幕/简介。
+bilibili.search_url() {
+	local url="$1" param view bvid cid line text="" sub="" dm=""
+	param="$(bilibili.url.param "$url")" || {
+		log.error "不是合法的 B 站视频 URL：$url"
+		return 1
+	}
+
+	if [[ -n ${BILI_SESSDATA:-} ]]; then
+		dig.cookie.set "SESSDATA=$BILI_SESSDATA"
+	else
+		log.warn "B 站字幕需要登录态（BILI_SESSDATA），本次只抓弹幕与视频元数据"
+	fi
+
+	view="$(dig.http.get "$_BILI_API/x/web-interface/view" "$param")" || return 1
+	[[ "$(printf '%s' "$view" | "$(schema.jq.bin)" -r '.code // 0')" == "0" ]] || {
+		log.error "B 站接口返回 code=$(printf '%s' "$view" | "$(schema.jq.bin)" -r '.code // "?"')：$(printf '%s' "$view" | "$(schema.jq.bin)" -r '.message // ""')"
+		return 1
+	}
+
+	bvid="$(printf '%s' "$view" | "$(schema.jq.bin)" -r '.data.bvid // empty')"
+	cid="$(printf '%s' "$view" | "$(schema.jq.bin)" -r '.data.cid // empty')"
+	line="$(printf '%s' "$view" | bilibili.map_view | bilibili.map | head -1)"
+	[[ -n $line ]] || return 1
+
+	if [[ -n ${BILI_SESSDATA:-} && -n $cid ]]; then
+		sub="$(bilibili.subtitle "$bvid" "$cid")" || sub=""
+	fi
+	if [[ -n $cid ]]; then
+		dm="$(bilibili.danmaku_text "$cid")" || dm=""
+	fi
+	text="$sub"
+	if [[ -n $dm ]]; then
+		text="${text:+$text
+
+--- 弹幕 ---
+}$dm"
+	fi
+
+	# parse.json.patch 只覆盖非空值：抓不到字幕/弹幕时保留 map 填好的简介
+	parse.json.patch "$line" "text=$text" | schema.pipe 0 | schema.limit 1
 }
 
 bilibili.map() {
@@ -150,4 +227,5 @@ bilibili.danmaku_sample() {
 	printf '%s' "$out" | awk '{ s = (NR == 1 ? $0 : s " / " $0) } END { print s }'
 }
 
-source.register bilibili "B 站视频搜索（字幕需 BILI_SESSDATA，弹幕免登录）" "tier:niche period:yes proxy:no key:optional" "" "BILI_SESSDATA（可选，用于字幕）"
+source.url.register bilibili bilibili.com
+source.register bilibili "B 站视频搜索（字幕需 BILI_SESSDATA，弹幕免登录）" "tier:niche period:yes proxy:no key:optional"

@@ -48,29 +48,36 @@ curl 原生继承 `https_proxy` / `http_proxy`。本机已写好用户级配置�
 
 ## 2. 优先级
 
-### 已接的源（`dig <名>`，2026-10-06）
+### 已接的源（`dig <名>`，2026-10-07）
 
-| 子命令 | 增量在哪 | 凭证 | 代理 |
-| --- | --- | --- | --- |
-| `hn` | 技术讨论、投票、评论（`-T comments` 直接搜评论语料） | 免 | 否 |
-| `github` | issue/PR、仓库、代码、commit 四种搜索（`-T`） | 免（走 `gh`） | 否 |
-| `so` | 问答正文与多年沉淀的得分（`-s` 换 StackExchange 站点） | 免 | 否 |
-| `arxiv` | 论文摘要 | 免 | 否 |
-| `openalex` | 学术文献 + 被引数 + 摘要 | 建议免费 key | 否 |
-| `discourse` | 官方论坛讨论（Python/PyTorch/Rust/OpenAI/HF 等 8 个实例） | 免 | 是 |
-| `hf` | 模型 / 数据集的下载量与点赞（`-T`） | 免 | 是 |
-| `zhihu` | 中文一手讨论与热榜 | `ZHIHU_ACCESS_SECRET`（免费） | 否 |
-| `v2ex` | 中文技术社区热帖与搜索 | 免 | 是 |
-| `bilibili` | 视频元数据、弹幕、字幕（`-t` 需 `BILI_SESSDATA`） | 免 / 可选 SESSDATA | 否 |
-| `youtube` | 视频搜索 + `-t` 补精确发布日与简介 | 免 | 是 |
-| `weread` | 书目评分 / 在读人数 | `WEREAD_API_KEY` 或 `pass weread` | 否 |
-| `polymarket` | 预测市场赔率与成交量（真金白银） | 免 | 是 |
+| 子命令 | 增量在哪 | tier | 凭证 | 代理 |
+| --- | --- | --- | --- | --- |
+| `hn` | 技术讨论、投票、评论（`-T comments` 直接搜评论语料） | core | 免 | 否 |
+| `github` | issue/PR、仓库、代码、commit 四种搜索（`-T`） | core | 免（走 `gh`） | 否 |
+| `so` | 问答正文与多年沉淀的得分（`-s` 换 StackExchange 站点） | core | 免 | 否 |
+| `arxiv` | 论文摘要 | topic | 免 | 否 |
+| `openalex` | 学术文献 + 被引数 + 摘要 | topic | 建议免费 key | 否 |
+| `discourse` | 官方论坛讨论（Python/PyTorch/Rust/OpenAI/HF 等 8 个实例） | topic | 免 | 是 |
+| `hf` | 模型 / 数据集的下载量与点赞（`-T`） | topic | 免 | 是 |
+| `zhihu` | 中文一手讨论与热榜 | topic | `ZHIHU_ACCESS_SECRET`（免费） | 否 |
+| `v2ex` | 中文技术社区热帖与搜索 | topic | 免 | 是 |
+| `reddit` | subreddit 内关键词搜索（`-s` 必给）+ `-r` 一次拿嵌套评论树；免 key 走 Arctic Shift，无需代理。拿不到跨全站关键词搜索 | topic | 免 | 否 |
+| `bilibili` | 视频元数据、弹幕、字幕（`-t` 需 `BILI_SESSDATA`） | niche | 免 / 可选 SESSDATA | 否 |
+| `youtube` | 视频搜索 + `-t` 补精确发布日与简介 | niche | 免 | 是 |
+| `weread` | 书目评分 / 在读人数 | niche | `WEREAD_API_KEY` 或 `pass weread` | 否 |
+| `wechat` | 公众号文章正文（**只能按 URL 取**；本地 curl 吃滑块，走云端浏览器） | topic | `CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_API_TOKEN` | 否 |
+| `polymarket` | 预测市场赔率与成交量（真金白银） | niche | 免 | 是 |
+
+> `reddit` 的定位是「某个社区怎么说 X」，不是「全网怎么说 X」：官方 `.json` 全 403，免 key 只能走
+> Arctic Shift，而它的搜索接口要求 `subreddit` / `author` 圈定，**跨全站关键词搜索在免 key 层做不到**。
+> 好消息是 `/api/comments/tree?link_id=t3_<id>` 能一次拿到嵌套评论树（没有 more stub 要展开），
+> 数据也是当天的，`dig reddit -s linux -r 3 "bash"` 即可。代价见 §6。
 
 ### 探测过但不接的
 
 | 候选 | 实测结论 |
 | --- | --- |
-| `reddit` | 代理能连通，但 `www.reddit.com/search.json` / `old.reddit.com` / `api.reddit.com` **全部 403**（HTML 拦截页），带浏览器 UA 也一样。匿名 JSON 已被封，只能走免费 OAuth app（client_credentials）；`arctic-shift` 需要 `subreddit`/`author`，没有关键词搜索 |
+| `reddit`（OAuth 路线） | `client_credentials` 流程本身没变（一条 curl 换 token，端点走 `oauth.reddit.com` + 固定格式 UA），但**门槛变成人工审批**：Responsible Builder Policy 要求先获批；新申请 **2026-10-31 截止**；RSS 2026-11-13 停；公共 Data API 2027-03 前关闭（公告口径存疑，见下）。**PullPush 已从「限流」变成付费墙**（实测 429 + 明说不为 agent 免费提供） |
 | `lobsters` | `lobste.rs/search.json` 返回 Anubis 人机验证页（HTTP 200 + "Making sure you're not a bot!"），要跑 JS 解 PoW |
 | `devto` | `/api/articles?tag=` 可用但只有标签浏览；`search/feed_content` 返回空，**没有关键词搜索** |
 | `bluesky` | 需代理 + App Password（免费）；公共 XRPC 未验证通过 |
@@ -212,15 +219,24 @@ curl -s 'https://api.bilibili.com/x/v2/reply?type=1&oid=AID&pn=1&ps=20&sort=2'
   dig 用法：`export BILI_SESSDATA=...` 后 `dig bilibili "词" -t 3`。
 - ⚠️ 匿名评论也只有首页 3 条（`ps` 给多少都只回 3，`pn=2` 空，楼中楼 `code 12006`）；
   所以没带登录态时，本源用**弹幕**（匿名可拿，几千条）当观众反应。
+- 历史弹幕（未接线，本机未实测）：`bilibili-API-collect` 记录 `/x/v2/dm/history/index`（日期索引）+
+  `/x/v2/dm/web/history/seg.so`（protobuf，老的 xml 接口已失效），两者都要 `SESSDATA`。
+  接上就能把弹幕从「一次性快照」变成时间序列。
 
 ### V2EX（✅ 免密钥，需代理）
 
 ```bash
-curl -s 'https://www.v2ex.com/api/topics/hot.json'                    # 热帖
+curl -s 'https://www.v2ex.com/api/topics/hot.json'                    # 热帖（v1，免 token）
 curl -s 'https://www.sov2ex.com/api/search?q=TOPIC&size=20&sort=created'  # 搜索（第三方）
+curl -s -H "Authorization: Bearer $V2EX_TOKEN" \
+  'https://www.v2ex.com/api/v2/topics/1/replies'                      # 回复楼层（v2，需 PAT）
 ```
 
 - 官方没有搜索 API，关键词搜索走 sov2ex。
+- **API 2.0 需 PAT**（`Authorization: Bearer`，600 请求/小时/IP）：2026-10 实测 `/api/v2/topics/1`、
+  `/api/v2/topics/1/replies`、`/api/v2/nodes/api/topics` **免 token 一律 401 `Token not found`**。
+  回复楼层是「大家怎么解决的」真正的所在：API 2.0 要 PAT，**但按 URL 取主题走云端浏览器就能拿到**
+  （`dig fetch https://www.v2ex.com/t/<id>`，见 §4 微信公众号那节）。
 - sov2ex 默认按相关度排，结果跨年份，会把时间窗口过滤变成空；**必须带 `sort=created`**。
 - sov2ex 的 `created` 是「北京时间、无时区」的字符串（`2017-05-04T09:38:57`），
   按 UTC 解析后减 8 小时才是真实 UTC 时刻。
@@ -310,8 +326,10 @@ curl -s 'https://hn.algolia.com/api/v1/search?query=TOPIC&tags=comment&hitsPerPa
 ```bash
 https://lobste.rs/search.json?q=TOPIC                       # ❌ Anubis 人机验证（页内无可用 JSON）
 https://api.stocktwits.com/api/2/streams/symbol/AAPL.json   # 403，需 UA / cookie
-https://arctic-shift.photon-reddit.com/api/posts/search?subreddit=linux&limit=50   # 仅 subreddit/author
-https://api.pullpush.io/reddit/search/comment?q=TOPIC        # ✅ 可搜评论，但连续性 429
+https://arctic-shift.photon-reddit.com/api/posts/search?subreddit=linux&limit=50          # 列表（subreddit/author 必给）
+https://arctic-shift.photon-reddit.com/api/posts/search?subreddit=linux&query=bash       # ✅ sub 内关键词搜索（跨全站不行）
+https://arctic-shift.photon-reddit.com/api/comments/tree?link_id=t3_<id>&limit=9999      # ✅ 一次拿到嵌套评论树，免 key
+https://api.pullpush.io/reddit/search/comment?q=TOPIC                                    # ❌ 付费墙（429 + 明说不为 agent 免费提供）
 https://api.semanticscholar.org/graph/v1/paper/search?query=TOPIC&limit=20        # 429，需重试
 https://api.npmjs.org/downloads/point/last-month/PKG        # ✅ 包下载量
 https://pypistats.org/api/packages/PKG/recent               # ✅ 包下载量
@@ -348,16 +366,25 @@ curl -s -X POST "https://i.weread.qq.com/api/agent/gateway" \
   -d '{"api_name":"/store/search","skill_version":"1.0.4","keyword":"三体","scope":10,"count":3}'
 ```
 
-- 凭证：`WEREAD_API_KEY` 环境变量，或 `pass weread`（archive/weread.sh 的取法）。
-- 可用 `api_name`（archive/weread.sh 已全部跑通）：`/store/search`、`/shelf/sync`、
-  `/book/info`、`/book/chapterinfo`、`/book/getprogress`、`/readdata/detail`。
+- 这套接口是**微信读书官方 skill** 提供的，权威说明看那边：
+  <https://weread.qq.com/r/weread-skills>（扫码拿 API Key）与 <https://github.com/Tencent/WeChatReading>
+  的 `skills/*.md`。本文件只记 dig 用到的那部分。
+- 凭证：`WEREAD_API_KEY`（官方页面扫码获取），或本地 `pass weread`。
+- 官方 skill 提供多个 `api_name`（`/store/search`、`/book/info`、`/shelf/sync`、`/book/getprogress`、
+  `/readdata/detail` 等）；**dig 只用两个**：`/store/search` 与 `-i N` 时的 `/book/info`。
+  剩下的（书架 / 进度 / 阅读统计）是账号私有数据，属「个人阅读助手」语义，
+  与 dig「按站点取公开数据」的定位不符，不接。
 - `skill_version` 是网关校验字段。过期时响应会带 `upgrade_info`（含 `latest_version` /
-  `upgrade_url`），**但数据仍然返回** —— 所以 dig 只 warn 不 fail（抄 archive 的
-  `assert_ok` 把它当致命错，会让每次上游发版都断）。
+  `upgrade_url`），**但数据仍然返回** —— 所以 dig 只 warn 不 fail（把它当致命错，
+  会让每次上游发版都断）。
 - 返回是「HTTP 200 + 业务 `errcode`」信封，必须单独判错，否则会静默返回空。
 - **能力边界**：只有书目元数据（评分 / 在读人数 / 作者 / 分类），**没有评论区、没有读者讨论**。
 - `newRating` 是 0-1000 的原始分（`930` = 93.0），dig 不做换算，原样进 `engagement`。
-- `dig weread` 目前只用 `/store/search`，`-s/--scope` 可选类型（10=电子书 默认）。
+- `dig weread` 用 `/store/search`（`-s/--scope` 可选类型，10=电子书 默认）；
+  `-i N` 为前 N 本抓 `/book/info`，取 `intro`（简介，实测 215 字）填进 `text`——
+  `/store/search` 不返回简介，而「值不值得读」的判断材料就在它里面。
+  `/book/info` 另给 `publisher` / `publishTime` / `category` / `isbn`，dig 暂不收（会污染 tags，
+  也不是 `created_at` 该用的时间轴）。
 
 ### 豆瓣 ⚠️ 免密钥端点不稳定，暂不接
 
@@ -397,6 +424,28 @@ HTTP 200 + `[]`，无法区分，直接违反 dig 的「失败要响」。将来
 **已否定的**：在小红书官方开放平台申请（要企业资质）；在 Bash 里实现 `x-s` 签名
 （无先例，算法被 JSVMP 保护）；「无需登录」的路径只存在于付费云端采集（Apify 之类）。
 
+### 微信公众号 ✅ 走云端浏览器（需 Cloudflare 凭证）
+
+本地怎么试都不行、云端浏览器能过——2026-10-07 实测：
+
+| 路径 | 结果 |
+| --- | --- |
+| 本机 curl（桌面 UA / MicroMessenger UA / Googlebot 都试了） | HTTP 302 → `mp.weixin.qq.com/mp/wappoc_appmsgcaptcha`（滑块验证页） |
+| 普通网页读取 | 判成「JS 渲染、无内容」 |
+| Cloudflare Browser Run `/markdown` | ✅ 拿到 title / author / 正文（短链 `/s/<id>` 与带 `poc_token` 的长链都行，30KB 量级） |
+
+- 所以 `dig wechat` **只能按 URL 取**（`dig fetch "<文章链接>"`）：微信没有公开检索接口，发现仍靠 web 检索。
+- 端点：`POST https://api.cloudflare.com/client/v4/accounts/<account>/browser-run/markdown`，
+  body `{"url":…,"gotoOptions":{"waitUntil":"networkidle0"}}`，token 要 `Account · Browser Rendering · Edit`。
+  注意「凭证有效」与「有权限」是两回事：只授别的权限时 `/user/tokens/verify` 是绿的，这个接口回 `10000`。
+- 返回是 markdown，头部带 YAML front-matter（`title` / `meta.author` / `meta.description`）。
+  字段与正文的拆分在 `lib/browser.sh`，`wechat` 与 `v2ex` 共用这一份能力。
+- **限流**：免费档 REST 6 次/分钟（1 次/10 秒）——只适合单条取，不做批量。dig 会让调用在本地按这个
+  间隔排队（`DIG_BROWSER_MIN_INTERVAL`，默认 12 秒——10 秒卡在 6 次/分钟的边界上）；真被 429 时还会
+  按这个间隔多试一次（通用退避的 2s/4s 对分钟级限流太短）。
+- **反面**：知乎在同一出口回 `40362 您当前请求存在异常`。云端浏览器解决的是「挡在本机 / 要 JS 渲染」，
+  不是「站点要求登录」，别当通用抓取器用。
+
 ## 5. 从 archive/retrieve.sh 抢救下来的内容
 
 已归档到这里，原文件已删（`git log` 里仍有全文）：
@@ -413,11 +462,49 @@ HTTP 200 + `[]`，无法区分，直接违反 dig 的「失败要响」。将来
 ## 6. 已知坑
 
 - **HN**：`points` 不能做 numericFilters；`>` 要编码成 `%3E`。
-- **Reddit**：必须带浏览器 UA，否则被拒；`.json` 搜索通道本身也不稳（403/429 是常态）。
+- **Reddit**：`.json` 全 403（换 UA 无效）；**免 key 只能走 Arctic Shift**，且关键词搜索必须用 `subreddit`/`author` 圈定；
+  失败要分三类处理——`HTTP != 200` / JSON 体里的 `error` 字段（Arctic Shift 在 200、422 里都会塞）/ 连接超时，分别退避重试与报错退出。
 - **SO**：`pagesize` ≤ 100；响应是 gzip。
 - **arXiv**：http 会 301；Atom XML 不是 JSON，本机无 `xmllint`，解析走 `parse.xml.records`。
 - **GitHub**：免密钥 10 req/min，跑批量时先 `gh auth token` 提额。
-- **YouTube 只缺字幕**：`timedtext` 恒返回 `content-length: 0`、InnerTube `/player` 各客户端都没有
-  captions（出口 IP 信誉问题，cookie 也救不了）。搜索与 `-t` 补发布日期/简介都可用，**不要用 yt-dlp**。
+- **YouTube 只缺字幕**：watch 页能拿到字幕轨（实测 31 条），但轨道 URL 带 `exp=xpe`（需 PO token），
+  取回是 HTTP 200 + **0 字节**；2026-10 实测七个 InnerTube 客户端（WEB / MWEB / WEB_EMBEDDED_PLAYER /
+  TVHTML5_SIMPLY_EMBEDDED_PLAYER / ANDROID_VR / IOS / TVHTML5）**全部拿不到 `captionTracks`**，
+  ANDROID_VR 与 TVHTML5 直接回 `Sign in to confirm you're not a bot`（出口 IP 被标记）。
+  要拿只能引 BotGuard / PO token 生成，属于本工具拒绝的重依赖；搜索与 `-t` 补发布日期/简介不受影响，**不要用 yt-dlp**。
 - **知乎**：每日免费额度数字**未确认**（二手来源称 1000 次/天），接线前先用
   `GET /api/v1/quota` 实测；官方文档页 JS 渲染，本机抓不到正文。
+
+## 7. 按 URL 直取（`dig fetch`）
+
+给一个链接，判断它属于哪个源，再用该源的接口取这一条（2026-10-07 接线，产物与检索同形：同一条 JSONL、
+同样的正文预览、同样过缓存）。路由框架（`lib/fetch.sh`）只有通用机制，站点知识全在各源自己的
+`<源>.url.route` 里，新增一个源不动框架。
+
+| 源 | URL 形态 | 端点 | 单条结果的 `text` |
+| --- | --- | --- | --- |
+| `hn` | `news.ycombinator.com/item?id=<n>` | `hn.algolia.com/api/v1/items/<n>` | Ask HN 正文；链接帖为空 |
+| `github` | `github.com/<o>/<r>`、`/<o>/<r>/issues/<n>`、`/pull/<n>` | `gh api repos/<o>/<r>`、`repos/<o>/<r>/issues/<n>` | 仓库 description / issue 正文 |
+| `so` | `stackoverflow.com/questions/<n>[/slug]`、`/q/<n>` | `api.stackexchange.com/2.3/questions/<n>?site=stackoverflow&filter=withbody` | 问题正文 |
+| `arxiv` | `arxiv.org/abs/<id>`、`/pdf/<id>[vN][.pdf]` | `export.arxiv.org/api/query?id_list=<id>` | 摘要 |
+| `openalex` | `openalex.org/W<id>`、`api.openalex.org/works/W<id>`、`doi.org/<doi>` | `/works/<id>` 或 `/works?filter=doi:<doi>` | 倒排索引还原的摘要（截 1200 字符） |
+| `reddit` | `reddit.com/r/<sub>/comments/<id>`、`/comments/<id>`、`redd.it/<id>`、old./np. | `arctic-shift…/api/posts/ids?ids=<id>` | `selftext`；给了 `-r N` 时是评论树 |
+| `bilibili` | `bilibili.com/video/BV…`、`/video/av<N>` | `x/web-interface/view` + `player/v2` 字幕 + `dm/list.so` 弹幕 | 字幕稿 + 弹幕；都拿不到时退回简介 |
+| `discourse` | `https://<实例>/t/<slug>/<id>`、`/t/<id>` | `https://<实例>/t/<id>.json` | 首帖正文 |
+| `hf` | `huggingface.co/<o>/<m>`、`/datasets/<o>/<n>`、`/spaces/<o>/<n>` | `huggingface.co/api/{models,datasets,spaces}/<id>` | `pipeline_tag`（与检索同形） |
+| `wechat` | `mp.weixin.qq.com/s/<id>` 或 `/s?__biz=…&mid=…&idx=…&sn=…` | 云端浏览器 `/markdown`（见 §4） | 正文全文；`title` / `author` 来自 front-matter |
+| `v2ex` | `www.v2ex.com/t/<id>` | 同上（本机直连不通，只能走它） | 主题正文 + 回复（markdown 表格），导航/广告/页脚已裁掉 |
+| `polymarket` | `polymarket.com/event/<slug>`、`/market/<slug>` | `gamma-api.polymarket.com/public-search?q=<slug>` 再按 slug 精确匹配 | 该事件下各 market 的 `question` |
+
+不接线的三个，以及为什么：
+
+- **zhihu**：正文要登录态（云端浏览器也过不去，见 §4）。
+- **youtube**：字幕轨要 PO token（见第 6 节）。
+- **weread**：deepLink 里的 `v=` 不是 `bookId`，映射不过去。
+
+约定：**URL 必须是第一个实参**，它之后的参数原样转给认领它的源（`-r 3`、`--no-cache` 都能用）——
+`fetch` 自己不解析选项，否则源特有的选项会在外层被当未知选项拒掉。认不出的 URL 报错，不会静默地
+当成「没搜到」。
+
+另：`DIG_FETCH_FALLBACK=1`（默认关）时，认不出的 URL 会交给云端浏览器兜底取一页，产出 `source=browser`
+的一条——默认关是为了保住「按站点取数、取不到就取不到」的定位。

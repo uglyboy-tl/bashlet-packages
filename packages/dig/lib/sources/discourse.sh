@@ -8,6 +8,7 @@
 import core/log
 
 import common
+import fetch
 import schema
 import source
 
@@ -20,6 +21,21 @@ discourse.options() {
 # 探测默认实例清单里的第一个
 discourse.probe() { dig.http.probe "https://${_DIG_DISCOURSE_SITES%%,*}/search.json?q=test"; }
 
+# 从主题 URL 抠出主题号：/t/<slug>/<id> 或 /t/<id>
+discourse.url.id() {
+	local u="$1"
+	if [[ $u =~ /t/[^/]+/([0-9]+) ]]; then
+		printf '%s' "${BASH_REMATCH[1]}"
+		return 0
+	fi
+	if [[ $u =~ /t/([0-9]+) ]]; then
+		printf '%s' "${BASH_REMATCH[1]}"
+		return 0
+	fi
+	return 1
+}
+
+# host 必须命中 _DIG_DISCOURSE_SITES（逐个 fetch.host.any 比对）：全面开放域名会把别人的站当 Discourse
 discourse.search() {
 	[[ -n $DIG_QUERY ]] || {
 		log.error '需要查询词：dig discourse "关键词"'
@@ -40,6 +56,11 @@ discourse.search() {
 	local host ok=0 out combined=""
 	for host in "${hosts[@]}"; do
 		host="${host// /}"
+		# host 会拼进 URL：手误（如 evil.com/x?）会构造出别的地址，先卡字符集
+		[[ $host =~ ^[A-Za-z0-9.-]+(:[0-9]+)?$ ]] || {
+			log.error "-s/--site 需要形如 discuss.python.org 的 host，得到：$host"
+			return 1
+		}
 		if out="$(dig.http.get "https://$host/search.json" "q=$DIG_QUERY")"; then
 			combined+="$(printf '%s' "$out" | discourse.map "$host")"$'\n'
 			ok=$((ok + 1))
@@ -53,6 +74,39 @@ discourse.search() {
 		return 1
 	}
 	printf '%s' "$combined" | schema.pipe "$DIG_AFTER" | schema.limit "$DIG_LIMIT"
+}
+
+# 单条：<实例>/t/<id>.json 的形状与 search.json 不同，用小 mapper 取标题 / 首帖正文 /
+# 创建时间 / 浏览量 / 楼层数；cooked 是 HTML，去标签后进 text。
+discourse.map_topic() {
+	local host="${1:-}"
+	"$(schema.jq.bin)" -c --arg query "${DIG_QUERY:-}" --arg host "$host" "$_SCHEMA_JQ_LIB"'
+    {
+      source: "discourse",
+      id: ($host + "#" + (.id | tostring)),
+      url: ("https://" + $host + "/t/" + (.slug // "topic") + "/" + (.id | tostring)),
+      title: (.title // ""),
+      text: ((.post_stream.posts[0].cooked // "") | html_text),
+      author: (.post_stream.posts[0].username // ""),
+      created_at: ((.details.created_at // .created_at // "") | to_utc),
+      engagement: ({ replies: ((.posts_count // 0) | if . > 0 then . - 1 else 0 end) }
+        + (if (.views // null) != null then { views: .views } else {} end)),
+      tags: ([ $host ]
+        + [(.tags // [])[]? | if type == "object" then (.name // "") else (. | tostring) end]
+        | map(select(. != null and . != ""))),
+      query: $query
+    }'
+}
+
+discourse.search_url() {
+	local url="$1" host id body
+	host="$(fetch.host "$url")"
+	id="$(discourse.url.id "$url")" || {
+		log.error "不是合法的 Discourse 主题 URL：$url"
+		return 1
+	}
+	body="$(dig.http.get "https://$host/t/$id.json")" || return 1
+	printf '%s' "$body" | discourse.map_topic "$host" | schema.pipe 0 | schema.limit 1
 }
 
 # search.json 分成 topics[] 与 posts[]：topics 有标题与 slug，posts 有作者与摘要。
@@ -80,4 +134,12 @@ discourse.map() {
       }'
 }
 
-source.register discourse "Discourse 社区（Python/PyTorch/Rust/OpenAI/HF 等官方论坛）" "tier:topic period:pastyear proxy:yes key:none" "" ""
+# 认领哪些实例由配置决定（config.toml 的 discourse.sites），所以用函数动态给清单
+discourse.url.hosts() {
+	local -a sites=()
+	[[ -n ${_DIG_DISCOURSE_SITES:-} ]] || return 0
+	IFS=, read -ra sites <<< "$_DIG_DISCOURSE_SITES"
+	printf '%s\n' "${sites[@]}"
+}
+
+source.register discourse "Discourse 社区（Python/PyTorch/Rust/OpenAI/HF 等官方论坛）" "tier:topic period:pastyear proxy:yes key:none"

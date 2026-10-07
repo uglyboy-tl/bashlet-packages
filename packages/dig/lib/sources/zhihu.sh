@@ -57,24 +57,13 @@ zhihu.fetch() {
 	local secret
 	secret="$(zhihu.credential)" || return 1
 
-	dig.requests.init || return 1
+	dig.requests.init || return $?
 	requests.headers.append "Authorization" "Bearer $secret"
 	requests.headers.append "X-Request-Timestamp" "$(date -u +%s)"
 
-	local resp code rc
-	resp="$(requests.get "https://developer.zhihu.com$path" "$@")" || return 1
-	code="$(requests.status_code "$resp")"
-	rc="$(requests.exit_code "$resp")"
-	# 传输层失败时 status_code 是 0 而不是 000（见 dig.http.probe 的注释）
-	if [[ -n $rc && $rc != 0 ]] || [[ $code == 0 || $code == 000 ]]; then
-		log.error "无法连接 developer.zhihu.com：网络不通（curl exit ${rc:-未知}）"
-		return 1
-	fi
-	[[ $(requests.success "$resp") == "true" ]] || {
-		log.error "知乎接口返回 HTTP $code"
-		return 1
-	}
-	requests.text "$resp"
+	# 走 dig.http.request 而不是裸 requests.get：只有这条路上才有重试与统一的失败分类。
+	# 否则一次 TLS 握手抖动（curl exit 35）就会被报成「源挂了」，而且只试一次。
+	dig.http.request GET "https://developer.zhihu.com$path$(requests.query.build "$@")" "" ""
 }
 
 zhihu.check() {
@@ -149,4 +138,4 @@ zhihu.hot.map() {
       }'
 }
 
-source.register zhihu "知乎搜索 / 热榜" "tier:topic period:yes proxy:no key:required" "" "ZHIHU_ACCESS_SECRET"
+source.register zhihu "知乎搜索 / 热榜" "tier:topic period:yes proxy:no key:required"

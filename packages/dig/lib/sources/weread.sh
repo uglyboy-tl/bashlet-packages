@@ -11,6 +11,7 @@ import std/string
 import std/system
 
 import common
+import parse
 import schema
 import source
 
@@ -57,6 +58,11 @@ weread.key() {
 weread.body() {
 	local api_name="$1"
 	shift
+	# 参数必须成对（key value）：落单的那个会被 while 静默丢掉，不如直接报出来
+	(($# % 2 == 0)) || {
+		log.error "参数必须成对给出：$*"
+		return 1
+	}
 	local filter='{api_name:$api, skill_version:$ver}'
 	local -a jqargs=(--arg api "$api_name")
 	local i=0
@@ -76,27 +82,15 @@ weread.body() {
 weread.api.call() {
 	local api_name="$1"
 	shift
-	local key
+	local key body
 	key="$(weread.key)" || return 1
+	body="$(weread.body "$api_name" "$@")" || return 1
 
-	dig.requests.init || return 1
+	dig.requests.init || return $?
 	requests.headers.append "Authorization" "Bearer $key"
 
-	local body resp code rc
-	body="$(weread.body "$api_name" "$@")" || return 1
-	resp="$(requests.post "$_WEREAD_GATEWAY" "$body" "application/json")" || return 1
-	code="$(requests.status_code "$resp")"
-	rc="$(requests.exit_code "$resp")"
-	# 传输层失败时 status_code 是 0 而不是 000（见 dig.http.probe 的注释）
-	if [[ -n $rc && $rc != 0 ]] || [[ $code == 0 || $code == 000 ]]; then
-		log.error "无法连接 i.weread.qq.com：网络不通（curl exit ${rc:-未知}）"
-		return 1
-	fi
-	[[ $(requests.success "$resp") == "true" ]] || {
-		log.error "微信读书网关返回 HTTP $code"
-		return 1
-	}
-	requests.text "$resp"
+	# 与 zhihu 同理：只走重试层，偶发的传输层抖动不该被报成「源挂了」
+	dig.http.request POST "$_WEREAD_GATEWAY" "$body" "application/json"
 }
 
 # 网关的 errcode 才是真错误；upgrade_info 只是「有新版本」的告知，不阻断取数
@@ -117,6 +111,7 @@ declare -ga _WEREAD_SCOPES=(10 16 14 6 12 13 2 4)
 
 weread.options() {
 	args.add_options "scope" "s" "搜索类型 10=电子书(默认) 16=网文 14=有声书 6=作者 12=全文 13=书单 2=公众号 4=文章" "NUMBER"
+	args.add_options "info" "i" "为前 N 本抓简介填进 text（每本 1 个请求，默认 0）" "NUMBER"
 }
 
 weread.search() {
@@ -138,7 +133,11 @@ weread.search() {
 	weread.check "$body" || return 1
 
 	# 书目没有时间维度，不套时间窗口（created_at 留空，schema.pipe 会保留）
-	printf '%s' "$body" | weread.map | schema.pipe 0 | schema.limit "$DIG_LIMIT"
+	local n
+	n="$(dig.opt.natural 0 -i --info)" || return 1
+
+	printf '%s' "$body" | weread.map | schema.pipe 0 |
+		schema.enrich "$n" weread.enrich_one | schema.limit "$DIG_LIMIT"
 }
 
 weread.map() {
@@ -170,4 +169,22 @@ weread.map() {
       }'
 }
 
-source.register weread "微信读书书目（无评论区）" "tier:niche period:no proxy:no key:required" "" "WEREAD_API_KEY"
+# -i N：为前 N 本抓 /book/info，把简介填进 text。
+# 书目条目的用处就是「值不值得读」，而 /store/search 不返回简介（intro 只在详情里）。
+# 失败时保留原行——这是 schema.enrich 的契约：不能用空串把上游的行吞掉。
+weread.enrich_one() {
+	local line="$1" id info text
+	id="$(printf '%s' "$line" | "$(schema.jq.bin)" -r '.id // empty')"
+	[[ -n $id ]] || {
+		printf '%s' "$line"
+		return 0
+	}
+	if info="$(weread.api.call /book/info bookId "$id")"; then
+		text="$(printf '%s' "$info" | "$(schema.jq.bin)" -r '.intro // ""')"
+	else
+		text=""
+	fi
+	parse.json.patch "$line" "text=$text"
+}
+
+source.register weread "微信读书书目（无评论区）" "tier:niche period:no proxy:no key:required"

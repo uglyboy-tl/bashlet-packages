@@ -9,6 +9,7 @@ import core/log
 import ext/requests
 import std/string
 import std/system
+import std/cache
 
 import schema
 import source
@@ -32,11 +33,12 @@ dig.requests.init() {
 		return 3
 	}
 
-	local -a extra=("$@")
+	local -a extra=()
 	[[ -n ${DIG_PROXY:-} ]] && extra+=(--proxy "$DIG_PROXY")
 	[[ -n ${DIG_COOKIE:-} ]] && extra+=(-H "Cookie: $DIG_COOKIE")
 	[[ -n ${DIG_AUTH:-} ]] && extra+=(-H "Authorization: $DIG_AUTH")
-	requests.init "${extra[@]}" 2> /dev/null
+	# bash 4.3 + set -u 下，空数组直接展开 "${extra[@]}" 会报 unbound：用 + 展开兜住
+	requests.init ${extra[@]+"${extra[@]}"} 2> /dev/null
 }
 
 # 最后一次请求的 HTTP 状态码（调用方用来区分失败类型）
@@ -60,10 +62,21 @@ dig.clamp() { # <请求值> <上限> <上游名>
 }
 
 # 带重试的请求：传输层失败（连不上/DNS/证书/超时）与 429 / 5xx 才重试，退避 2s、4s…
-# 其余 4xx 不重试 —— 那是参数或凭证问题，重试没用。
+# 其余 4xx 不重试 —— 那是参数或凭证问题，重试没用；
+# 站点把背压信号放在别的状态码上时（如 Arctic Shift 的 422），用 DIG_HTTP_RETRY_CODES 追加。
 dig.http.request() {
 	local method="$1" url="$2" body="${3:-}" ctype="${4:-}"
 	local tries=$((${DIG_RETRY:-2} + 1)) i=0 resp code rc
+	local retry_re='^(429|5[0-9][0-9])$'
+	# 源可以追加要重试的状态码（Arctic Shift 用 422 表背压）。拼进正则前先校验：
+	# 写入元字符（"4|2"）会改变匹配意图，拼坏了 [[ =~ ]] 返回 2 被当假，反而少重试。
+	if [[ -n ${DIG_HTTP_RETRY_CODES:-} ]]; then
+		if [[ $DIG_HTTP_RETRY_CODES =~ ^[0-9]+([[:space:]]+[0-9]+)*$ ]]; then
+			retry_re="^(429|5[0-9][0-9]|$(printf '%s' "${DIG_HTTP_RETRY_CODES// /|}"))$"
+		else
+			log.warn "DIG_HTTP_RETRY_CODES 只接受空格分隔的状态码数字，忽略：$DIG_HTTP_RETRY_CODES"
+		fi
+	fi
 
 	while :; do
 		i=$((i + 1))
@@ -78,7 +91,7 @@ dig.http.request() {
 				requests.text "$resp"
 				return 0
 			fi
-			if [[ $rc == "0" && $code != "000" && $code != "0" && $code != "429" && ! $code =~ ^5 ]]; then
+			if [[ $rc == "0" && $code != "000" && $code != "0" && ! $code =~ $retry_re ]]; then
 				log.error "请求被拒：$url (HTTP $code)"
 				return 1
 			fi
@@ -105,13 +118,13 @@ dig.http.request() {
 dig.http.get() {
 	local url="$1"
 	shift
-	dig.requests.init || return 1
+	dig.requests.init || return $?
 	dig.http.request GET "$url$(requests.query.build "$@")" "" ""
 }
 
 # POST JSON 并取回响应体
 dig.http.post_json() {
-	dig.requests.init || return 1
+	dig.requests.init || return $?
 	dig.http.request POST "$1" "$2" "application/json"
 }
 
@@ -191,6 +204,7 @@ dig.options.common() {
 	args.add_options "period" "p" "时间窗口 last24h|pastweek|pastmonth|pastyear|all" "WINDOW"
 	args.add_options "json" "" "输出 JSONL（默认人类可读）"
 	args.add_options "output" "o" "结果落盘文件" "FILE"
+	args.add_options "no-cache" "" "跳过结果缓存，强制走网络"
 }
 
 # 解析公共选项到 DIG_* 全局。$1 为源模块名（可用 <源>.period 声明自己的默认窗口）。
@@ -227,7 +241,13 @@ dig.common.apply() {
 	DIG_OUTPUT="$(dig.opt -o --output)"
 	DIG_QUERY="$(dig.query)"
 
-	export DIG_LIMIT DIG_PERIOD DIG_AFTER DIG_JSON DIG_OUTPUT DIG_QUERY
+	# 按 URL 直取（-u）：只有实现了 search_url 的源才有这个选项，其余源拿到空串
+	DIG_URL="$(dig.opt -u --url)"
+
+	# --no-cache 走环境变量而不是全局：cache 模块只读它，不关心命令是怎么传进来的
+	args.has "--no-cache" && DIG_NO_CACHE=1
+
+	export DIG_LIMIT DIG_PERIOD DIG_AFTER DIG_JSON DIG_OUTPUT DIG_QUERY DIG_URL DIG_NO_CACHE
 }
 
 # 输出：--json 直出 JSONL，否则渲染成人类可读；给了 -o 就先落盘原始 JSONL
@@ -238,4 +258,36 @@ dig.output() {
 	else
 		schema.output
 	fi
+}
+
+# ── 结果缓存（策略层；存储在 bashlet 的 std/cache）──────────────────────────────
+# 只缓存**成功**结果 —— 失败缓存下来会把一次网络抖动记一整天，那是「失败要响」的反面。
+# 命中时打一行 INFO：让调用方知道这是缓存、要最新数据得加 --no-cache。
+_DIG_CACHE_TTL="${DIG_CACHE_TTL:-86400}"
+
+dig.cache.enabled() { [[ ${DIG_NO_CACHE:-} != 1 ]] && ((_DIG_CACHE_TTL > 0)); }
+
+# dig.cached <结果键> -- <命令...>：命中就回放，未命中才跑命令并缓存它的输出
+dig.cached() {
+	local key="$1"
+	shift
+	[[ ${1:-} == "--" ]] && shift
+
+	if dig.cache.enabled; then
+		local hit
+		if hit="$(cache.get result "$key" "$_DIG_CACHE_TTL")"; then
+			log.info "结果缓存命中（${_DIG_CACHE_TTL}s 内）：要最新数据加 --no-cache"
+			[[ -n $hit ]] && printf '%s\n' "$hit"
+			return 0
+		fi
+	fi
+
+	local out
+	out="$("$@")" || return 1
+	# 缓存只是附加收益：写不进去（目录不可写、磁盘满）不该把已经拿到的结果连带丢掉
+	if dig.cache.enabled; then
+		cache.put result "$key" "$out" || log.warn "结果缓存写入失败，忽略（不影响本次输出）"
+	fi
+	[[ -n $out ]] && printf '%s\n' "$out"
+	return 0
 }

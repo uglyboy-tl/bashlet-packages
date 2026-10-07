@@ -84,3 +84,43 @@ setup() {
 	assert_failure
 	assert_output --partial "需要正整数"
 }
+
+# ========== 结果缓存（策略层，存储在 std/cache）==========
+
+@test "dig.cached: 第二次命中缓存，不再执行命令" {
+	local calls="$BATS_TEST_TMPDIR/calls"
+	run dig.cached key1 -- bash -c "echo x >> '$calls'; printf 'line1\nline2'"
+	assert_success
+	assert_output --partial 'line1'
+
+	run dig.cached key1 -- bash -c "echo x >> '$calls'; printf 'other'"
+	assert_success
+	assert_output --partial 'line1'
+	refute_output --partial 'other'
+	[ "$(wc -l < "$calls")" -eq 1 ]
+}
+
+@test "dig.cached: 命令失败不写缓存，第二次仍会执行" {
+	local calls="$BATS_TEST_TMPDIR/calls2"
+	run dig.cached key2 -- bash -c "echo x >> '$calls'; exit 3"
+	assert_failure
+	run dig.cached key2 -- bash -c "echo x >> '$calls'; printf 'ok'"
+	assert_success
+	[ "$(wc -l < "$calls")" -eq 2 ]
+}
+
+@test "dig.cached: DIG_NO_CACHE=1 时每次都跑命令" {
+	local calls="$BATS_TEST_TMPDIR/calls3"
+	DIG_NO_CACHE=1 run dig.cached key3 -- bash -c "echo x >> '$calls'; printf 'd'"
+	DIG_NO_CACHE=1 run dig.cached key3 -- bash -c "echo x >> '$calls'; printf 'd'"
+	[ "$(wc -l < "$calls")" -eq 2 ]
+}
+
+@test "dig.cached: 空结果也缓存（合法的「真的没有」不该反复重查）" {
+	local calls="$BATS_TEST_TMPDIR/calls4"
+	run dig.cached key4 -- bash -c "echo x >> '$calls'"
+	assert_success
+	run dig.cached key4 -- bash -c "echo x >> '$calls'"
+	assert_success
+	[ "$(wc -l < "$calls")" -eq 1 ]
+}
