@@ -150,10 +150,13 @@ setup() {
 	refute_output --partial "不该走到"
 }
 
+# 原来是 lib/source.sh 里的 source.url.has，只供本文件使用，已移入测试
+url_has() { [[ -n ${_SOURCE_URL_HOSTS[$1]:-} ]] || declare -F "$1.url.hosts" > /dev/null 2>&1; }
+
 @test "fetch: 声明了 URL 覆盖的源都实现了 search_url（否则 -u 会打到不存在的函数）" {
 	local src
 	for src in $(source.list); do
-		source.url.has "$src" || continue
+		url_has "$src" || continue
 		declare -F "$src.search_url" > /dev/null 2>&1 || {
 			echo "$src 声明了 host 却没有 search_url"
 			return 1
@@ -167,7 +170,7 @@ setup() {
 	local src
 	for src in "${wired[@]}"; do
 		want[$src]=1
-		source.url.has "$src" || {
+		url_has "$src" || {
 			echo "$src 在接线清单里，但没有声明 host"
 			return 1
 		}
@@ -176,7 +179,7 @@ setup() {
 	local -a got=()
 	mapfile -t got < <(
 		for src in $(source.list); do
-			source.url.has "$src" && printf '%s\n' "$src"
+			url_has "$src" && printf '%s\n' "$src"
 		done
 	)
 	for src in "${got[@]}"; do

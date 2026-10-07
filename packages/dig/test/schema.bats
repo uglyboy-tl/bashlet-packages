@@ -7,14 +7,19 @@ setup() {
 	_dig_setup
 }
 
+# 以下三个原语只曾供测试使用，已从 lib/schema.sh 移入测试：断言 jq 原语本身
+url_norm() { "$(schema.jq.bin)" -rn --arg u "${1:-}" "$_SCHEMA_JQ_LIB"'$u | norm_url'; }
+to_utc() { "$(schema.jq.bin)" -rn --arg d "${1:-}" "$_SCHEMA_JQ_LIB"'$d | to_utc'; }
+html_text() { "$(schema.jq.bin)" -rn --arg t "${1:-}" "$_SCHEMA_JQ_LIB"'$t | html_text'; }
+
 @test "schema: URL 规范化去追踪参数、host 小写、去尾斜杠" {
-	run schema.url.normalize "HTTPS://Example.COM/Path/?utm_source=x&a=1#frag"
+	run url_norm "HTTPS://Example.COM/Path/?utm_source=x&a=1#frag"
 	assert_success
 	assert_output "https://example.com/Path?a=1"
 }
 
 @test "schema: URL 规范化不留尾斜杠" {
-	run schema.url.normalize "https://a.example.com/b/"
+	run url_norm "https://a.example.com/b/"
 	assert_output "https://a.example.com/b"
 }
 
@@ -24,13 +29,13 @@ setup() {
 }
 
 @test "schema: to_utc 把带偏移的 RFC3339 转成 UTC Z" {
-	run schema.to_utc "2025-03-31T09:54:39-07:00"
+	run to_utc "2025-03-31T09:54:39-07:00"
 	assert_success
 	assert_output "2025-03-31T16:54:39Z"
 }
 
 @test "schema: to_utc 对解析不了的输入原样返回" {
-	run schema.to_utc "不是日期"
+	run to_utc "不是日期"
 	assert_success
 	assert_output "不是日期"
 }
@@ -80,7 +85,7 @@ setup() {
 }
 
 @test "schema.html_text: 去标签与实体" {
-	run schema.html_text "<p>Hello &amp; <b>world</b>&#x27;s</p>"
+	run html_text "<p>Hello &amp; <b>world</b>&#x27;s</p>"
 	assert_success
 	assert_output "Hello & world's"
 }

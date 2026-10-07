@@ -103,21 +103,6 @@ schema.period.after() {
 	esac
 }
 
-schema.url.normalize() {
-	"$(schema.jq.bin)" -rn --arg u "${1:-}" "$_SCHEMA_JQ_LIB"'$u | norm_url'
-}
-
-# 带时区偏移的 RFC3339 -> UTC Z；解析不了时原样返回
-schema.to_utc() {
-	"$(schema.jq.bin)" -rn --arg d "${1:-}" "$_SCHEMA_JQ_LIB"'$d | to_utc'
-}
-
-# 粗粒度 HTML -> 纯文本（去标签、解常见实体、压空白）
-schema.html_text() {
-	"$(schema.jq.bin)" -rn --arg t "${1:-}" "$_SCHEMA_JQ_LIB"'$t | html_text'
-}
-
-# stdin: 条目对象流 -> stdout: 规范化后的 JSONL
 schema.pipe() {
 	local after="${1:-0}"
 	"$(schema.jq.bin)" -c --arg now "$(schema.now)" --argjson after "$after" \

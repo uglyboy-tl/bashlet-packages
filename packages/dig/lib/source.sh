@@ -56,10 +56,6 @@ source.url.register() {
 
 source.url.hosts() { printf '%s' "${_SOURCE_URL_HOSTS[$1]:-}"; }
 
-source.url.has() {
-	[[ -n ${_SOURCE_URL_HOSTS[$1]:-} ]] || declare -F "$1.url.hosts" > /dev/null 2>&1
-}
-
 # source.cap <名> <键> → 输出能力值，未声明返回 1
 source.cap() {
 	local caps=" ${_SOURCE_CAPS[$1]:-} " key="$2"
