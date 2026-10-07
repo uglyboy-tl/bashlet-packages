@@ -165,7 +165,7 @@ registry.unlock() { rmdir "$(registry.lock_dir)" 2> /dev/null || true; }
 
 # 拉远端：带验证器条件请求，校验形状后才原子替换；失败不触碰已有缓存
 registry.fetch() {
-	local cache tmp meta response code
+	local cache tmp meta response code etag="" modified=""
 	cache="$(registry.cache)"
 	tmp="$cache.tmp"
 	meta="$(registry.meta)"
@@ -173,14 +173,20 @@ registry.fetch() {
 
 	requests.init "-L"
 	if [[ -f $meta ]]; then
-		local etag modified
 		etag=$(sed -n 's/^etag=//p' "$meta")
 		modified=$(sed -n 's/^last-modified=//p' "$meta")
-		[[ -n $etag ]] && requests.headers.append "If-None-Match" "$etag"
-		[[ -z $etag && -n $modified ]] && requests.headers.append "If-Modified-Since" "$modified"
 	fi
 
-	response=$(requests.get "$IMAGINE_REGISTRY_URL") || return 1
+	# 条件头放进子 shell：requests.headers.append 写的是全局 _REQUESTS_HEADERS，
+	# 直接在父 shell 里追加会让同进程后续请求（模型列表、图片生成）串验证器。
+	response=$(
+		if [[ -n $etag ]]; then
+			requests.headers.append "If-None-Match" "$etag"
+		elif [[ -n $modified ]]; then
+			requests.headers.append "If-Modified-Since" "$modified"
+		fi
+		requests.get "$IMAGINE_REGISTRY_URL"
+	) || return 1
 	code=$(requests.status_code "$response")
 
 	if [[ $code == 304 ]]; then

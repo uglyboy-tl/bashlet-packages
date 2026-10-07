@@ -351,6 +351,22 @@ default_model = "agnes-remote"
   [[ "$(registry.get agnes default_model)" == "agnes-remote" ]]
 }
 
+@test "unit - registry 条件头不外泄到全局默认头" {
+  registry.ensure
+  local got="$BATS_TEST_TMPDIR/got"
+  printf 'etag="old"\n' > "$(registry.meta)"
+  requests.init() { :; }
+  requests.get() {
+    printf '%s' "${_REQUESTS_HEADERS["If-None-Match"]:-}" > "$got"
+    printf '{"status_code":304,"curl_exit":0,"success":true,"headers":{},"body":""}'
+  }
+  requests.status_code() { echo 304; }
+  requests.headers.append() { _REQUESTS_HEADERS["$1"]="$2"; }
+  registry.fetch
+  [[ "$(cat "$got")" == '"old"' ]]                 # 验证器确实发出去了
+  [[ -z ${_REQUESTS_HEADERS["If-None-Match"]:-} ]] # 但没漏进全局
+}
+
 @test "unit - registry TTL 以尝试时间为准" {
   registry.ensure
   run registry.is_fresh
