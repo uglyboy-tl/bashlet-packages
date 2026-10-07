@@ -80,3 +80,39 @@ setup() {
 	assert_output --partial "from-env.toml"
 }
 
+@test "registry: registry_ensure 预解析包目录，字段读取复用父 shell 的结果" {
+	_binup_seed_registry
+	registry_ensure "$REGISTRY_URL" 60
+
+	[[ $_REGISTRY_DUMP_URL == "$REGISTRY_URL" ]]
+	[[ ${_REGISTRY_ENTRIES[packages.lf.repo]} == "gokcehan/lf" ]]
+}
+
+@test "registry: 含点的远端表名整条丢弃，不产生幽灵包" {
+	_binup_seed_registry
+	local cache
+	cache=$(requests.cache.path "$REGISTRY_URL")
+	printf '\n[packages.foo.bar]\nrepo = "a/b"\n' >> "$cache"
+
+	run registry_names "$REGISTRY_URL"
+	assert_success
+	assert_output --partial "lf"
+	refute_output --partial "foo"
+}
+
+@test "registry: 非法包名被过滤，registry_get 按缓存读字段" {
+	_binup_seed_registry
+	local cache
+	cache=$(requests.cache.path "$REGISTRY_URL")
+	printf '\n[packages.ev"il]\nrepo = "a/b"\n' >> "$cache"
+
+	run registry_names "$REGISTRY_URL"
+	assert_success
+	assert_output --partial "lf"
+	assert_output --partial "uv"
+	refute_output --partial 'ev"il'
+
+	local got
+	got=$(registry_get "$REGISTRY_URL" lf repo)
+	[[ $got == "gokcehan/lf" ]]
+}

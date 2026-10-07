@@ -38,8 +38,12 @@ cmd_search() {
 	mapfile -t names < <(registry_names "$url")
 
 	local name lower keyword matched
+	local repo description
 	for name in "${names[@]}"; do
-		lower="$(printf '%s %s %s' "$name" "$(registry_get "$url" "$name" repo)" "$(registry_get "$url" "$name" description)" | tr '[:upper:]' '[:lower:]')"
+		# 直接读解析好的 _REGISTRY_ENTRIES：每个包 4 次 $( ) 会把 search 拖成 N 倍的 fork 开销
+		repo="${_REGISTRY_ENTRIES["packages.$name.repo"]:-}"
+		description="${_REGISTRY_ENTRIES["packages.$name.description"]:-}"
+		lower="${name,,} ${repo,,} ${description,,}"
 		matched=true
 		for keyword in "${keywords[@]}"; do
 			[[ $lower == *"${keyword,,}"* ]] || {
@@ -55,10 +59,10 @@ cmd_search() {
 		return 0
 	fi
 
-	local repo description status
+	local status
 	for name in "${hits[@]}"; do
-		repo="$(registry_get "$url" "$name" repo)"
-		description="$(registry_get "$url" "$name" description)"
+		repo="${_REGISTRY_ENTRIES["packages.$name.repo"]:-}"
+		description="${_REGISTRY_ENTRIES["packages.$name.description"]:-}"
 		if is_package_in_default_config_with_repo "$name"; then
 			status=" $POWERLINE_OK 已配置"
 		else

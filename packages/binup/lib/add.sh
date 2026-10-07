@@ -37,6 +37,7 @@ cmd_add() {
 
 	local config_file
 	config_file="$(config.path)" || return 1
+	# readlink -f：配置常是 dotbot 软链，sed -i 会把软链替换成普通文件，先解析到真实路径再就地更新
 	config_file="$(readlink -f "$config_file")"
 	log.debug "本地配置: $config_file"
 
@@ -48,8 +49,12 @@ cmd_add() {
 	local package field value count=0
 	for package in "${targets[@]}"; do
 		if ! array.contains names "$package"; then
-			log.error "包目录中不存在: $package"
-			log.error "运行 \`$_USAGE_SCRIPT_FILENAME search\` 查看可用包"
+			if registry.name.valid "$package"; then
+				log.error "包目录中不存在: $package"
+				log.error "运行 \`$_USAGE_SCRIPT_FILENAME search\` 查看可用包"
+			else
+				log.error "包名非法（只允许字母/数字/下划线/连字符）: $package"
+			fi
 			continue
 		fi
 		if is_package_in_default_config_with_repo "$package" && ! args.has "-f" "--force"; then

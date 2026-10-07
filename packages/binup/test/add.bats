@@ -43,3 +43,32 @@ setup() {
 	assert_failure
 }
 
+@test "add: 远端包名含非法字符时不进可选列表，也写不进配置" {
+	_binup_seed_registry
+	local cache
+	cache=$(requests.cache.path "$REGISTRY_URL")
+	printf '\n[packages.ev"il]\nrepo = "a/b"\n' >> "$cache"
+
+	run bash binup.sh search
+	assert_success
+	refute_output --partial 'ev"il'
+
+	run bash binup.sh add 'ev"il'
+	assert_failure
+	assert_output --partial "包名非法"
+
+	run grep -q 'ev"il' "$_CONFIG_PATH"
+	assert_failure
+}
+
+@test "add: 用户传入的非法包名给出明确错误而非「不存在」" {
+	_binup_seed_registry
+
+	run bash binup.sh add 'foo.bar'
+	assert_failure
+	assert_output --partial "包名非法"
+
+	run grep -q 'packages.foo' "$_CONFIG_PATH"
+	assert_failure
+}
+

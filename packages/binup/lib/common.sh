@@ -3,6 +3,7 @@
 
 import core/log
 import core/config
+import std/ansi.powerline
 import std/array
 
 # 包目录缓存的默认有效期（小时），供 search/add 在配置值非法时兜底
