@@ -28,6 +28,9 @@ _create_default_config() {
 	[[ $dir != "$path" ]] && mkdir -p "$dir"
 	cat > "$path" << 'EOF'
 # BinUp 配置
+# 注意: 本文件常常是 dotfiles 的软链（~/.config/binup/config.toml -> 仓库里的 xxx.toml），
+#       `binup add` 会解析软链后就地改写真实文件，所以新增的包会直接出现在仓库里，记得提交。
+#
 # 每个包声明在 [packages.<名称>] 段中:
 #   repo           = "owner/repo"           # GitHub 仓库
 #   version_type   = "release"              # release(默认) | 其他(取 releases 列表首个)
