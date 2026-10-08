@@ -13,8 +13,9 @@
 `__ZSHPROXY_HTTP`）。经它访问：google 204、youtube 200、reddit 200、v2ex API 200、
 bluesky 302、polymarket 200；出口 IP 稳定（`202.155.152.212` 连测 3 次一致，不是轮换代理）。
 
-dig 的代理取值顺序：`DIG_PROXY` 环境变量 > `~/.config/dig/config.toml` 的 `proxy.url` >
-curl 原生继承 `https_proxy` / `http_proxy`。本机已写好用户级配置，开箱即用；
+dig 的代理取值顺序：`DIG_PROXY` 环境变量 > curl 原生继承的 `https_proxy` / `http_proxy`。
+**没有配置文件这条路**（2026-10-08 移除）：dig 是 skill 配套脚本，构建产物是单文件，
+包内 `config.toml` 不会跟着走，原先那两个 `config.load` 在产物里只会静默失败。
 构建出的单文件产物**会读同目录的 `.env`**（`dig.sh` 带 `# build:keep-env`，`tools/build` 会保留这段加载）；跨机器部署时用环境变量或随产物放一份 `.env`。
 
 ### 无代理时的不可达站点
@@ -30,6 +31,9 @@ curl 原生继承 `https_proxy` / `http_proxy`。本机已写好用户级配置�
 | huggingface.co | 108.160.162.31 | Dropbox |
 | www.v2ex.com | 185.60.216.50 | Facebook |
 | html.duckduckgo.com | - | - |
+| abs.twimg.com | 2a03:2880:f11a:83:face:b00c:0:25de | Facebook |
+| twitter.com | ::ffff:127.0.0.1 | 本机回环 |
+| x.com | 172.66.0.227 | Cloudflare |
 
 连续 3 次请求全部超时，不是偶发。
 
@@ -64,9 +68,10 @@ curl 原生继承 `https_proxy` / `http_proxy`。本机已写好用户级配置�
 | `reddit` | subreddit 内关键词搜索（`-s` 必给）+ `-r` 一次拿嵌套评论树；免 key 走 Arctic Shift，无需代理。拿不到跨全站关键词搜索 | topic | 免 | 否 |
 | `bilibili` | 视频元数据、弹幕、字幕（`-t` 需 `BILI_SESSDATA`） | niche | 免 / 可选 SESSDATA | 否 |
 | `youtube` | 视频搜索 + `-t` 补精确发布日与简介 | niche | 免 | 是 |
-| `weread` | 书目评分 / 在读人数 | niche | `WEREAD_API_KEY` 或 `pass weread` | 否 |
+| `weread` | 书目评分 / 在读人数 | niche | `WEREAD_API_KEY` | 否 |
 | `wechat` | 公众号文章正文（**只能按 URL 取**；本地 curl 吃滑块，走云端浏览器） | topic | `CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_API_TOKEN` | 否 |
 | `polymarket` | 预测市场赔率与成交量（真金白银） | niche | 免 | 是 |
+| `x` | X 关键词搜索 + 单推（`--tweet`；走网页端 GraphQL；单页最多 20 条） | topic | `X_AUTH_TOKEN` + `X_CT0`（单推零凭证） | 是 |
 
 > `reddit` 的定位是「某个社区怎么说 X」，不是「全网怎么说 X」：官方 `.json` 全 403，免 key 只能走
 > Arctic Shift，而它的搜索接口要求 `subreddit` / `author` 圈定，**跨全站关键词搜索在免 key 层做不到**。
@@ -166,7 +171,8 @@ curl -s -H "Authorization: Bearer $ZHIHU_ACCESS_SECRET" \
 ```
 
 - 凭证：`developer.zhihu.com/profile` 注册即生成，**无企业资质要求**，单账号最多 20 个，
-  共享同一额度池。读取顺序参照社区实现：`ZHIHU_ACCESS_SECRET` → `~/.config/zhihu-search/credentials.json`。
+  共享同一额度池。凭证只看 `ZHIHU_ACCESS_SECRET`（2026-10-08 起不再读 `~/.config/zhihu-search/credentials.json`
+  那类外部文件 —— key 只在一个地方配，缺哪个变量直说）。
 - 端点：`/api/v1/content/zhihu_search`（单次 ≤10）、`/api/v1/content/global_search`（≤20）、
   热榜（≤30，上限 30）、`/api/v1/quota`，另有 OpenAI 兼容的直答 `POST /v1/chat/completions`。
 - 错误码：`30001` 频率、`30002` 配额、`30003` 风控、`20001` token 无效。
@@ -241,6 +247,50 @@ curl -s -H "Authorization: Bearer $V2EX_TOKEN" \
 - sov2ex 的 `created` 是「北京时间、无时区」的字符串（`2017-05-04T09:38:57`），
   按 UTC 解析后减 8 小时才是真实 UTC 时刻。
 - 热帖接口的 `created` 本身就是 epoch，不用换算。
+
+### X / Twitter（✅ 需 cookie 与代理，2026-10-07 接线）
+
+网页端 GraphQL，与 `last30days` 的 bird 后端同一条路：公开 bearer（不是账号凭证）+ 浏览器里的
+两个 cookie。没有浏览器自动化，也没有官方 API（免费档只能发推）。
+
+```bash
+curl -s --proxy "$DIG_PROXY" -X POST \
+  "https://x.com/i/api/graphql/M1jEez78PEfVfbQLvlWMvQ/SearchTimeline?variables=<urlencoded>" \
+  -H "authorization: Bearer <网页端公开 bearer>" \
+  -H "x-csrf-token: $X_CT0" -H "x-twitter-auth-type: OAuth2Session" \
+  -H "x-twitter-active-user: yes" -H "x-twitter-client-language: en" \
+  -H "cookie: auth_token=$X_AUTH_TOKEN; ct0=$X_CT0" -H "content-type: application/json" \
+  --data-raw "{\"features\":{…},\"queryId\":\"M1jEez78PEfVfbQLvlWMvQ\"}"
+```
+
+- 关于 cookie，两个事实要分开看：
+  1. **搜索请求本身不校验 cookie 的真实性**（2026-10-07 实测）：只带一个假 `auth_token`
+     （值为 `0` / `x` / `deadbeef`）就返回 200 与真实结果，连 `ct0` 与 `x-csrf-token` 都可以不给；
+     **完全不带 cookie 头才 403**。已排除干扰：响应头是 `x-cache: MISS` + `via: 1.1 varnish`
+     （请求真到 X 边缘、未被代理缓存），换全新查询词返回 0 条；同一个假 cookie 打需要登录的
+     `account/settings.json` 得到 **401 `Could not authenticate`**，证明代理没有注入真 cookie。
+  2. **但 queryId 只能靠登录态取得**：它藏在 `x.com/home` 的 `main.*.js` 里，而该页未登录会
+     307 到 `/i/jf/onboarding/web`；公开页面（xdevelopers / explore / login）只有 9 个登录前 chunk、
+     没有 main bundle。**所以 dig 仍然要求 `X_AUTH_TOKEN` / `X_CT0`。**
+- dig **刻意不留内置 queryId**：写死的值一过期就是全挂，报出来还是 403/404，看不出真正原因。
+  拿不到就明确失败、让用户去配 cookie；有 cookie 时缓存 30 天（只防缓存永不到期），**收到 403/404 会自动重取一次再重试**。
+  30 天而不是 short TTL，是为了对齐 last30days 的**实际**行为：它常量写着 24h，但所有 `refresh` 调用
+  都带 `force: true`，TTL 分支根本没被走到 —— 真正干活的是 404 触发的失败驱动。
+- `features` 必须带，缺字段直接 400。dig 内联了 38 个字段的快照。
+- 三个入口：`dig x "词"`（搜索）、`dig x --tweet <id|url>`（单推）、`dig fetch <推文链接>`（同单推）。
+- 单页最多 20 条。翻页要读响应里的 `Bottom` 游标，尚未实现。
+- **queryId 失效时**（搜索全挂、报 403/404）：`dig x --update-ids` 抓 `x.com/home` → 取只出现在该页的
+  `main.*.js` → 提取成对的 `queryId:"…",operationName:"…"`（2026-10-07 实测 104 条，
+  其中 SearchTimeline = `ph2fARFabkwfxqmSKQ1OPw`）。**这一步需要真 cookie**：`/home` 未登录会 307 到
+  登录页，而所有公开页面（xdevelopers / explore / login）里只有 9 个登录前 chunk、没有 main bundle。
+  candidates.md §1.3 原本设想「BFS 展开 168 个 chunk」，实测不必：main bundle 里直接有成对的表。
+- 单推走 `cdn.syndication.twimg.com/tweet-result?id=<id>&token=<任意>`：零凭证。`token` 参数必须存在
+  但**值不校验**（实测 `x` 与 `wrongtoken` 都返回完整数据），所以 dig 没实现那套 base36 算法；
+  拿不到时（不存在 / 已删除 / 作者设了保护）该端点只回 `{}`，dig 会明确报出来。
+- 正文：长推文在 `note_tweet.note_tweet_results.result.text`，否则 `legacy.full_text`；
+  作者在 `core.user_results.result.core.screen_name`（不是 `legacy.screen_name`）；
+  `created_at` 是 RFC822，要自己转成 ISO 才能过 `schema.pipe` 的时间窗口。
+- 真 cookie 会过期（`ct0` 尤其），失效与 queryId 过期的表现一样是 403/404。
 
 ### Polymarket（✅ 免密钥，需代理）
 
@@ -369,7 +419,7 @@ curl -s -X POST "https://i.weread.qq.com/api/agent/gateway" \
 - 这套接口是**微信读书官方 skill** 提供的，权威说明看那边：
   <https://weread.qq.com/r/weread-skills>（扫码拿 API Key）与 <https://github.com/Tencent/WeChatReading>
   的 `skills/*.md`。本文件只记 dig 用到的那部分。
-- 凭证：`WEREAD_API_KEY`（官方页面扫码获取），或本地 `pass weread`。
+- 凭证：`WEREAD_API_KEY`（官方页面扫码获取）。2026-10-08 起不再支持 `pass weread` 回退。
 - 官方 skill 提供多个 `api_name`（`/store/search`、`/book/info`、`/shelf/sync`、`/book/getprogress`、
   `/readdata/detail` 等）；**dig 只用两个**：`/store/search` 与 `-i N` 时的 `/book/info`。
   剩下的（书架 / 进度 / 阅读统计）是账号私有数据，属「个人阅读助手」语义，
@@ -495,6 +545,7 @@ HTTP 200 + `[]`，无法区分，直接违反 dig 的「失败要响」。将来
 | `wechat` | `mp.weixin.qq.com/s/<id>` 或 `/s?__biz=…&mid=…&idx=…&sn=…` | 云端浏览器 `/markdown`（见 §4） | 正文全文；`title` / `author` 来自 front-matter |
 | `v2ex` | `www.v2ex.com/t/<id>` | 同上（本机直连不通，只能走它） | 主题正文 + 回复（markdown 表格），导航/广告/页脚已裁掉 |
 | `polymarket` | `polymarket.com/event/<slug>`、`/market/<slug>` | `gamma-api.polymarket.com/public-search?q=<slug>` 再按 slug 精确匹配 | 该事件下各 market 的 `question` |
+| `x` | `x.com/<user>/status/<id>`、`twitter.com/…` | `cdn.syndication.twimg.com/tweet-result?id=<id>&token=<任意>`（零凭证，不需要代理之外的东西） | 推文正文 |
 
 不接线的三个，以及为什么：
 

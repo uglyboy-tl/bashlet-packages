@@ -12,7 +12,7 @@ import source
 
 zhihu.probe() {
 	if ! zhihu.credential > /dev/null 2>&1; then
-		printf '设置 ZHIHU_ACCESS_SECRET，或写 ~/.config/zhihu-search/credentials.json'
+		printf '设置 ZHIHU_ACCESS_SECRET（写进包内 .env）'
 		return 3
 	fi
 	if zhihu.fetch /api/v1/quota > /dev/null 2>&1; then
@@ -27,27 +27,15 @@ zhihu.options() {
 	args.add_options "hot" "H" "取知乎热榜（忽略查询词）"
 }
 
-# 凭证读取顺序：ZHIHU_ACCESS_SECRET > $ZHIHU_SEARCH_HOME|~/.config/zhihu-search/credentials.json
+# 凭证只看 ZHIHU_ACCESS_SECRET（环境变量或包内 .env）。
+# 不再支持 ~/.config/zhihu-search/credentials.json 那类外部文件：key 只在一个地方配，
+# 缺哪个变量直说，比让人去几个隐蔽位置翻 key 直观得多。
 zhihu.credential() {
 	if [[ -n ${ZHIHU_ACCESS_SECRET:-} ]]; then
 		printf '%s' "$ZHIHU_ACCESS_SECRET"
 		return 0
 	fi
-
-	local dir="${ZHIHU_SEARCH_HOME:-$HOME/.config/zhihu-search}"
-	local file="$dir/credentials.json"
-	if [[ -f $file ]]; then
-		local s
-		s="$("$(schema.jq.bin)" -r '.access_secret // empty' "$file" 2> /dev/null || true)"
-		if [[ -n $s ]]; then
-			printf '%s' "$s"
-			return 0
-		fi
-		log.error "凭证文件 $file 缺少 access_secret 字段"
-		return 1
-	fi
-
-	log.error "缺少知乎凭证：设置 ZHIHU_ACCESS_SECRET，或写入 $file 的 {\"access_secret\":\"...\"}；免费申请 https://developer.zhihu.com/personal"
+	log.error "缺少知乎凭证：设置 ZHIHU_ACCESS_SECRET（写进包内 .env 即可）；免费申请 https://developer.zhihu.com/personal"
 	return 1
 }
 

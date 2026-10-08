@@ -37,21 +37,12 @@ setup() {
 	assert_output "from-env"
 }
 
-@test "zhihu.credential: 从 credentials.json 读 access_secret" {
+@test "zhihu.credential: 没设时给出怎么配的指引（不再有文件回退）" {
 	unset ZHIHU_ACCESS_SECRET
-	export ZHIHU_SEARCH_HOME="$BATS_TEST_TMPDIR/zh"
-	mkdir -p "$ZHIHU_SEARCH_HOME"
-	printf '%s' '{"access_secret":"from-file"}' > "$ZHIHU_SEARCH_HOME/credentials.json"
-	run zhihu.credential
-	assert_success
-	assert_output "from-file"
-}
-
-@test "zhihu.credential: 两处都没有时给出怎么配的指引" {
-	unset ZHIHU_ACCESS_SECRET
-	export ZHIHU_SEARCH_HOME="$BATS_TEST_TMPDIR/none"
 	run zhihu.credential
 	assert_failure
 	assert_output --partial "ZHIHU_ACCESS_SECRET"
 	assert_output --partial "developer.zhihu.com"
+	# 回退来源已移除：不该再出现这类字眼
+	[[ $output != *credentials.json* ]]
 }

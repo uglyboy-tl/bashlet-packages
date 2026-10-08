@@ -75,7 +75,11 @@
 
 - 默认继承 `https_proxy` / `http_proxy`（`curl` 与 `ext/requests` 都认）。
 - `DIG_PROXY` 显式覆盖，优先级高于环境变量。
-- 用户级配置 `~/.config/dig/config.toml` 的 `proxy.url` 作为兜底（跟机器绑的地址不应写进仓库）。
+- **没有配置文件兜底**（2026-10-08 移除）：dig 是 skill 配套脚本，`tools/build` 产出单文件，
+  包内 `config.toml` 不会跟着走 —— 原先那两个 `config.load` 在产物里只会静默失败（带
+  `2>/dev/null || true`），比报错更糟：开发时以为配置生效了。现在所有默认值都读环境变量
+  （`DIG_DEFAULT_LIMIT` / `DIG_DEFAULT_PERIOD` / `DIG_DISCOURSE_SITES` / `DIG_PROXY`），
+  要持久化就写包内 `.env`。
 - 所有源都要能报清楚「这是网络不通，不是没搜到」。
 
 ## CLI 形态
@@ -226,7 +230,6 @@ packages/dig/
 ├── dig.sh              # 入口：参数解析 + 子命令分发
 ├── SKILL.md            # research skill 正文（随 skill 分发）
 ├── references/dig.md   # dig 取数方法论（随 skill 分发，执行者开工前读）
-├── config.toml         # 默认 limit / period
 ├── lib/
 │   ├── core|std|ext    # bashlet 链接
 │   ├── common.sh       # 网络入口、重试、公共选项解析
@@ -246,8 +249,8 @@ packages/dig/
 
 ## 状态
 
-**已实现**：十四个源——`hn` / `github` / `so` / `arxiv` / `openalex` / `discourse` / `hf` /
-`zhihu` / `v2ex` / `reddit` / `bilibili` / `youtube` / `weread` / `polymarket`，加 `dig doctor`。
+**已实现**：十五个源——`hn` / `github` / `so` / `arxiv` / `openalex` / `discourse` / `hf` /
+`zhihu` / `v2ex` / `reddit` / `bilibili` / `youtube` / `weread` / `polymarket` / `x`，加 `dig doctor`。
 跨源聚合已评估并砍掉（见「跨源融合为什么被砍掉」）。
 
 网络层统一带重试：传输层失败与 429/5xx 退避重试（`DIG_RETRY`，默认 2 次），其余 4xx 直接报错。

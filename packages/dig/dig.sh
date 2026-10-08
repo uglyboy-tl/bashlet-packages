@@ -11,7 +11,6 @@ source "$PROJECT_ROOT/lib/std/import.sh"
 .env
 
 import core/args
-import core/config
 import core/log
 import std/string
 
@@ -24,25 +23,16 @@ import sources/index
 import std/cache
 import doctor
 
-# 注册配置项、载入 config.toml
+# 默认值只来自环境变量，**不读任何配置文件**。
+#
+# 为什么不留 config.toml：dig 是 skill 配套脚本，tools/build 产出的是单文件，包内的
+# config.toml 不会跟着走 —— 原来那两个 config.load（包内 + ~/.config/dig/config.toml）
+# 在产物里只会静默失败（都带 2>/dev/null || true），比报错更糟：开发时以为配置生效了。
+# 想持久化就写包内 .env（dig.sh 带 `# build:keep-env`，产物也会加载同目录的 .env）。
 dig.settings.load() {
-	config.register "defaults.limit" "20" "number" "默认条目上限"
-	config.register "defaults.period" "pastmonth" "string" "默认时间窗口"
-	config.register "proxy.url" "" "string" "网络代理（DIG_PROXY 环境变量优先）"
-	config.register "discourse.sites" "discuss.python.org,community.openai.com,discuss.huggingface.co,discuss.pytorch.org,users.rust-lang.org,meta.discourse.org,community.fly.io,discuss.elastic.co" "string" "dig discourse 默认搜的实例列表"
-
-	# 包内默认值，再叠用户级配置（后者可覆盖，用于代理/默认值这种跟机器绑的东西）
-	config.load "$PROJECT_ROOT/config.toml" 2> /dev/null || true
-	config.load "${XDG_CONFIG_HOME:-$HOME/.config}/dig/config.toml" 2> /dev/null || true
-
-	_DIG_DEFAULT_LIMIT="$(dig.num "defaults.limit" 20)"
-	_DIG_DEFAULT_PERIOD="$(config.get "defaults.period" 2> /dev/null || true)"
-	[[ -n $_DIG_DEFAULT_PERIOD ]] || _DIG_DEFAULT_PERIOD="pastmonth"
-
-	if [[ -z ${DIG_PROXY:-} ]]; then
-		DIG_PROXY="$(config.get "proxy.url" 2> /dev/null || true)"
-	fi
-	_DIG_DISCOURSE_SITES="$(config.get "discourse.sites" 2> /dev/null || true)"
+	_DIG_DEFAULT_LIMIT="${DIG_DEFAULT_LIMIT:-20}"
+	_DIG_DEFAULT_PERIOD="${DIG_DEFAULT_PERIOD:-pastmonth}"
+	_DIG_DISCOURSE_SITES="${DIG_DISCOURSE_SITES:-discuss.python.org,community.openai.com,discuss.huggingface.co,discuss.pytorch.org,users.rust-lang.org,meta.discourse.org,community.fly.io,discuss.elastic.co}"
 
 	# DIG_RETRY 必须是自然数：非法值要么在 $(( )) 里抛语法错（"1 2"），要么被当 0（abc）
 	if [[ -n ${DIG_RETRY:-} ]] && ! string.natural.check "$DIG_RETRY"; then
@@ -62,7 +52,7 @@ dig.settings.load() {
 		_BROWSER_MIN_INTERVAL=12
 	fi
 
-	export _DIG_DEFAULT_LIMIT _DIG_DEFAULT_PERIOD DIG_PROXY _DIG_DISCOURSE_SITES DIG_RETRY
+	export _DIG_DEFAULT_LIMIT _DIG_DEFAULT_PERIOD _DIG_DISCOURSE_SITES DIG_RETRY
 }
 
 # 所有源共用的执行骨架。模块名取自 args 选中的子命令，所以注册表加一个词就够了。
@@ -88,6 +78,12 @@ _dig_source() {
 	# 键要盖住所有影响结果的输入——源名 / 查询词 / 条数 / 窗口，加上该源的全部实参
 	# （`-T issues`、`-u <url>`、`-r 3` 这类开关都在 "$*" 里）。也含 `--json` / `-o` 这种只影响
 	# 输出的开关——宁可多算一份缓存，也不漏掉任何可能影响结果的入参。
+	# 带副作用的调用（如 `x --update-ids`）不该进结果缓存：否则第二次跑会被缓存挡住，
+	# 看起来执行了其实什么都没做。源可以声明 <源>.cache.bypass 来跳过这一层。
+	if declare -F "${mod}.cache.bypass" > /dev/null 2>&1 && "${mod}.cache.bypass"; then
+		DIG_NO_CACHE=1
+	fi
+
 	local key
 	local -a action=("${mod}.search")
 	[[ -n $DIG_URL ]] && action=("${mod}.search_url" "$DIG_URL")

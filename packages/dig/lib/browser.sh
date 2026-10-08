@@ -32,7 +32,7 @@ browser.available() { [[ -n ${CLOUDFLARE_ACCOUNT_ID:-} && -n ${CLOUDFLARE_API_TO
 
 browser.creds.check() {
 	browser.available || {
-		log.error "需要 Cloudflare Browser Run 凭证：CLOUDFLARE_ACCOUNT_ID 与 CLOUDFLARE_API_TOKEN（见 env.example）"
+		log.error "需要 Cloudflare Browser Run 凭证：CLOUDFLARE_ACCOUNT_ID 与 CLOUDFLARE_API_TOKEN（写进脚本同目录的 .env）"
 		return 1
 	}
 }

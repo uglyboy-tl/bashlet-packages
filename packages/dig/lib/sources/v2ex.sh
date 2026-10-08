@@ -83,7 +83,7 @@ v2ex.search_url() {
 		return 1
 	}
 	browser.creds.check || {
-		log.error '本机直连 www.v2ex.com 不通，取主题需要 Cloudflare Browser Run 凭证（见 env.example）'
+		log.error '本机直连 www.v2ex.com 不通，取主题需要 Cloudflare Browser Run 凭证（写进脚本同目录的 .env）'
 		return 1
 	}
 	browser.page "https://www.v2ex.com/t/$id" | v2ex.map_topic "$id" | schema.pipe 0 | schema.limit 1

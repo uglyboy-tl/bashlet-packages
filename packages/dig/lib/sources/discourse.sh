@@ -134,7 +134,7 @@ discourse.map() {
       }'
 }
 
-# 认领哪些实例由配置决定（config.toml 的 discourse.sites），所以用函数动态给清单
+# 认领哪些实例由 DIG_DISCOURSE_SITES 决定，所以用函数动态给清单
 discourse.url.hosts() {
 	local -a sites=()
 	[[ -n ${_DIG_DISCOURSE_SITES:-} ]] || return 0

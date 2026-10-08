@@ -24,6 +24,9 @@ dig bilibili "bash 教程" -t 3   # B 站字幕全文稿（需 BILI_SESSDATA）
 dig v2ex "Claude"       # V2EX（需代理）
 dig reddit -s linux "bash"   # Reddit 某个 sub 内搜索（-r N 抓嵌套评论树）
 dig polymarket "election"  # 预测市场赔率（需代理）
+dig x "claude code"      # X 关键词搜索（需 X_AUTH_TOKEN / X_CT0 与代理；单页最多 20 条）
+dig x --tweet <链接|id>  # X 单条推文（零凭证，走 syndication，不需要 cookie）
+dig x --update-ids       # X 的 queryId 失效时手动刷新（一般已自动完成）
 dig fetch <url>          # 已有链接：自动判断属于哪个源并取这一条
 dig fetch <公众号链接>     # 公众号正文（走云端浏览器，需 CLOUDFLARE_* 凭证）
 dig v2ex -u <主题链接>     # 主题 + 回复（本机直连 v2ex 不通，走云端浏览器）
@@ -40,13 +43,19 @@ dig doctor               # 探活：哪个源缺密钥 / 缺代理 / 缺外部�
 `openalex` / `reddit` / `bilibili` / `discourse` / `hf` / `polymarket` / `wechat` / `v2ex`。URL 必须是第一个实参，
 它之后的选项原样转给那个源（如 `dig fetch <reddit 链接> -r 3`）；其余 URL 会明确报「认不出」。
 
-代理：`DIG_PROXY` 环境变量 > `~/.config/dig/config.toml` 的 `proxy.url` > `https_proxy`。
+代理：`DIG_PROXY` 环境变量 > curl 原生继承的 `https_proxy`。**没有配置文件这条路**（2026-10-08 移除）：
+dig 是 skill 配套脚本，构建产物是单文件，包内 `config.toml` 不会跟着走；要持久化就写包内 `.env`
+（产物会加载同目录的 `.env`）。
 云端浏览器：`CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_API_TOKEN`（权限 `Browser Rendering - Edit`），
 给公众号正文与 v2ex 主题取数；`DIG_FETCH_FALLBACK=1` 时 `dig fetch` 对认不出的 URL 也用它兜底（默认关）。
-youtube / v2ex / polymarket / discourse / hf 必须走代理。
+x / youtube / v2ex / polymarket / discourse / hf 必须走代理。
 
-登录态：目前只有 B 站字幕需要，用 `BILI_SESSDATA` 环境变量提供（dig 不抓浏览器 cookie）。
+登录态：B 站字幕用 `BILI_SESSDATA`，X 用 `X_AUTH_TOKEN` + `X_CT0`（都是环境变量；dig 不抓浏览器 cookie）。
 匿名实测 0/10 视频可得字幕，带 SESSDATA 则 10/10。
+X 要 cookie 是为了**取回 queryId**：它藏在 `x.com/home` 的 main bundle 里，那个页面未登录会 307 到登录页。
+取到后缓存 30 天（只防缓存永不到期），失效（403/404）会自动重取；`dig x --update-ids` 可手动刷。
+拿法同 B 站：F12 → Application → Cookies → https://x.com 复制 `auth_token` 与 `ct0`。
+`dig x --tweet` 与 `dig fetch <推文链接>` 走 syndication，**零凭证、不需要 cookie**。
 
 ## 文档与分发
 

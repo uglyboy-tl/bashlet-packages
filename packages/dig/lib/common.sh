@@ -4,7 +4,6 @@
 # 包内共享小工具：网络入口、公共选项、查询词与数值配置读取。
 
 import core/args
-import core/config
 import core/log
 import ext/requests
 import std/string
@@ -80,8 +79,9 @@ dig.http.request() {
 
 	while :; do
 		i=$((i + 1))
-		# 每轮开头清空，否则重试失败时日志会显示上一轮的陈旧状态码
-		resp="" code="" rc=""
+		# 每轮开头清空：否则重试失败时日志会显示上一轮的陈旧状态码，而空响应时 dig.http.status
+		# 会把上一次请求的状态码留给调用方（x 的自愈会因此误判成 403/404 而多刷一次 queryId）
+		resp="" code="" rc="" _DIG_HTTP_STATUS=""
 		resp="$(requests.request "$method" "$url" "$body" "$ctype")" || resp=""
 		if [[ -n $resp ]]; then
 			code="$(requests.status_code "$resp")"
@@ -106,7 +106,7 @@ dig.http.request() {
 		if [[ -z $resp ]]; then
 			log.error "无法连接 $url：请求未产生响应"
 		elif [[ $rc != "0" || $code == "000" || $code == "0" ]]; then
-			log.error "无法连接 $url：网络不通（curl exit $rc）。若该站点需代理，设 DIG_PROXY 或写 ~/.config/dig/config.toml"
+			log.error "无法连接 $url：网络不通（curl exit $rc）。若该站点需代理，设 DIG_PROXY（要持久化就写进包内 .env）"
 		else
 			log.error "请求被拒：$url (HTTP $code)，已重试 $((i - 1)) 次"
 		fi
@@ -185,17 +185,6 @@ dig.opt.natural() {
 dig.query() {
 	local -n _dig_args_ref="$(args.args)"
 	string.trim "${_dig_args_ref[*]:-}"
-}
-
-# 从 config 读数值配置，非法或缺省时回落到 $2
-dig.num() {
-	local v
-	v="$(config.get "$1" 2> /dev/null || true)"
-	if string.int.check "$v" || string.float.check "$v"; then
-		printf '%s' "$v"
-	else
-		printf '%s' "$2"
-	fi
 }
 
 # 所有源一致的公共选项

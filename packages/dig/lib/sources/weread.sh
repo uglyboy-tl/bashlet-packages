@@ -2,13 +2,10 @@
 # shellcheck disable=SC2034,SC2016
 
 # 微信读书 agent gateway。单网关 POST，body 里用 api_name 选接口。
-# 需要 WEREAD_API_KEY 或 `pass weread`（见 docs/sources.md）。
+# 需要 WEREAD_API_KEY（环境变量或包内 .env）。
 # 只产出书目元数据（评分 / 在读人数 / 作者），没有评论区。
 
 import core/log
-import std/array
-import std/string
-import std/system
 
 import common
 import parse
@@ -17,7 +14,7 @@ import source
 
 weread.probe() {
 	if ! weread.key > /dev/null 2>&1; then
-		printf 'WEREAD_API_KEY，或 pass insert weread'
+		printf '设置 WEREAD_API_KEY（写进包内 .env）'
 		return 3
 	fi
 	if weread.api.call /store/search keyword test scope 10 count 1 > /dev/null 2>&1; then
@@ -31,26 +28,14 @@ weread.probe() {
 _WEREAD_GATEWAY="https://i.weread.qq.com/api/agent/gateway"
 # 网关校验这个字段。它只作为「告知」用：旧版本仍能取到数据，所以过期时只 warn，不 fail。
 _WEREAD_SKILL_VERSION="1.0.4"
-_WEREAD_KEY_CACHE=""
-
+# 凭证只看 WEREAD_API_KEY（环境变量或包内 .env）。原来还有一条 `pass weread` 的回退，
+# 已移除：key 只在一个地方配，缺了就直说。
 weread.key() {
 	if [[ -n ${WEREAD_API_KEY:-} ]]; then
 		printf '%s' "$WEREAD_API_KEY"
 		return 0
 	fi
-	if [[ -n $_WEREAD_KEY_CACHE ]]; then
-		printf '%s' "$_WEREAD_KEY_CACHE"
-		return 0
-	fi
-	if system.command.exist pass; then
-		local k
-		if k="$(pass weread 2> /dev/null)" && [[ -n $k ]]; then
-			_WEREAD_KEY_CACHE="$k"
-			printf '%s' "$k"
-			return 0
-		fi
-	fi
-	log.error "缺少微信读书凭证：设置 WEREAD_API_KEY 环境变量，或执行 pass insert weread"
+	log.error "缺少微信读书凭证：设置 WEREAD_API_KEY（写进包内 .env 即可）；取：https://weread.qq.com/r/weread-skills"
 	return 1
 }
 
