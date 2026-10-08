@@ -9,10 +9,12 @@ import common
 provider_google_meta() {
 	PROVIDER_LABEL="Google Gemini"
 	PROVIDER_CREDS=(GOOGLE_API_KEY)
-	PROVIDER_DEFAULT_MODEL="gemini-2.5-flash-image"
+	PROVIDER_DEFAULT_MODEL="gemini-3.1-flash-image"
+	PROVIDER_DEFAULT_REF_MODEL="gemini-3.1-flash-image"
 	PROVIDER_CAPS="size:aspect ref:multi seed:no negative:no quality:yes style:no n:4"
 	PROVIDER_HOST="generativelanguage.googleapis.com"
 	PROVIDER_XGET_PREFIX="gemini"
+	PROVIDER_PROBE_PATH="/v1beta/models"
 }
 
 provider_google_auth() { requests.headers.append "x-goog-api-key" "$GOOGLE_API_KEY"; }

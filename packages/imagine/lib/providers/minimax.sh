@@ -11,9 +11,17 @@ provider_minimax_meta() {
 	PROVIDER_DEFAULT_MODEL="image-01"
 	PROVIDER_CAPS="size:any ref:multi seed:yes negative:no quality:yes style:no n:9"
 	PROVIDER_HOST="api.minimaxi.com"
+	# 探活用 /v1/models（200 即 key 有效）—— 但它只列对话模型（MiniMax-M3 等），图像模型没有列表端点，
+	# 所以下面的清单只能手工维护
+	PROVIDER_PROBE_PATH="/v1/models"
+	# 手工维护的依据（2026-10-08 实测）：
+	#   - 官方文档的 enum 是唯一来源：文生图 image-01；图生图 image-01 + image-01-live
+	#   - 候选列表端点都不存在：/v1/models 忽略 ?type=image（仍返回对话模型），
+	#     /v1/image/models、/v1/images/models 等一律 404
+	#   - 实际打生成接口：image-01 与 image-01-live 均 success；
+	#     原先写在这里的 image-01-plus / image-02 报 "unsupported model"
 	PROVIDER_MODEL_LIST="image-01
-image-01-plus
-image-02"
+image-01-live"
 }
 
 provider_minimax_auth() { requests.auth_bearer "$MINIMAX_API_KEY"; }

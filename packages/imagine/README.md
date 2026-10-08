@@ -9,7 +9,7 @@ imagine -p "..." --quality 2k -o out.png                # 分辨率档位 normal
 imagine -p "..." --ref ref.png -o out.png               # 图生图
 imagine -p "..." --provider cloudflare -m @cf/...       # 指定 provider / 模型
 imagine --provider dashscope --extra parameters.prompt_extend=false  # 透传 provider 特有参数
-imagine providers                                       # 列各 provider 能力与凭证状态
+imagine providers                                       # 哪家能用（打只读端点验证 key）+ 缺什么
 imagine models [provider]                               # 列默认模型 / 全部模型
 imagine update                                          # 手动同步刷新模型目录（唯一阻塞网络的操作）
 imagine --json -p "..." -o out.png                       # 结果以 JSON 写到 stdout（日志仍在 stderr）
@@ -53,6 +53,7 @@ provider_example_meta() {
 	PROVIDER_SIZES=()                       # size:fixed 时的候选集合
 	PROVIDER_HOST="api.example.com"
 	PROVIDER_XGET_PREFIX=""                 # 走 XGET 代理时的路径前缀
+	PROVIDER_PROBE_PATH="/v1/models"        # 只读探活端点，供 `providers` 验证 key
 	PROVIDER_FREE=false
 }
 provider_example_auth() { requests.auth_bearer "$EXAMPLE_API_KEY"; }
@@ -63,6 +64,7 @@ provider_example_models() { ...; }          # 可选；输出换行分隔的模�
 provider.register example
 ```
 
+- **`PROVIDER_PROBE_PATH`**（可选）：只读探活端点（相对 `PROVIDER_HOST`），`imagine providers` 用它确认 key 真的能用，而不是只判断变量存不存在。不声明就显示「没有只读端点，无法验证」。
 - **`PROVIDER_CAPS`**：`size` 取 `any`（原样）/`star`（星号分隔）/`fixed`（就近映射到 `PROVIDER_SIZES`）/`aspect`（只给宽高比）/`none`（忽略）；`ref` 取 `none`/`one`/`multi`；`seed`/`negative`/`quality`/`style` 取 `yes`/`no`；`n` 为单次上限。
 - **`provider_parse` 只产出两种结果之一**：`IMAGINE_RESULT_TYPE=url`（换行分隔 URL）或 `base64`（换行分隔 base64）。适配器不碰文件系统。
 - **HTTP 200 也可能是业务错误**：由适配器的 `_parse` 自行判错并 `return 1`（如 Cloudflare 的 `success=false`、MiniMax 的 `base_resp.status_code`）。
@@ -90,7 +92,7 @@ provider.register example
 - **手动刷新**：`imagine update`（打印变更摘要，是唯一阻塞网络的操作）。
 - **维护**：`registry.toml` 是普通数据文件，**手动编辑和脚本更新等价**，都建议走 PR 评审，欢迎社区提 PR 增删模型。`models` 也可用 `scripts/update-registry.sh` 从活的 API 合并刷新（仓库带 `.github/workflows/update-registry.yml`，定时开 PR）；脚本只合并不删除、不碰 `default_model`。客户端由 `imagine update` 刷新缓存，或按 TTL 后台自动刷新。
 
-详见 `docs/REGISTRY.md`。
+详见 `docs/registry.md`。
 
 ## 环境变量
 
@@ -106,13 +108,16 @@ provider.register example
 | `IMAGINE_TIMEOUT` | 请求超时秒数，默认 120 |
 | `IMAGINE_RETRY` | 可恢复失败的重试次数，默认 2（4xx 不重试） |
 
-凭证放包目录的 `.env`（已 gitignore），或用真实环境变量。
+凭证放包目录的 `.env`（已 gitignore），或用真实环境变量。模板见 `env.example`：
+`cp env.example .env && chmod 600 .env`，里面逐家写了去哪拿 key、默认模型是什么、缺了会怎样。
 
-注意：`.env` 是**无条件 source**，会覆盖同名环境变量；若要环境变量优先，`.env` 里写成 `: "${VAR:=...}"`。`.env` 含密钥，建议 `chmod 600`。
+注意：`.env` 由入口在 `import` 之前 source，条目一律写 `: "${VAR:=...}"`（变量未设或为空才赋值），因此**环境里已设的非空同名变量优先**。`.env` 含密钥，建议 `chmod 600`。格式规范见 [`docs/env-example.md`](../../docs/env-example.md)。
 
 ## Provider 现状
 
-`imagine providers` 会打印这张活表（含凭证状态）。实测日期 2026-10-04。
+`imagine providers` 会**探活**（并发打各家一个只读端点）并打印上面那张表：可用的给详情，
+不可用的只给一行原因；`--offline` 只读配置不发请求，`--caps` 附带尺寸/参考图/张数。
+下面这张表是**生成接口**的实测记录（2026-10-04），与探活无关。
 
 | provider | 免费 | 实测 | 备注 |
 | --- | --- | --- | --- |
@@ -152,7 +157,7 @@ provider.register example
 ## 测试
 
 ```bash
-tools/test imagine          # 47 个离线用例 + 2 个真实生图（agnes 免费）
+tools/test imagine          # 全部离线用例 + 2 个真实生图（agnes 免费）
 ```
 
 生图用例会真实调用 API。连续执行可能触发 agnes 免费层速率限制，重跑即可。

@@ -11,8 +11,10 @@ provider_doubao_meta() {
 	PROVIDER_LABEL="火山方舟 Doubao"
 	PROVIDER_CREDS=(ARK_API_KEY)
 	PROVIDER_DEFAULT_MODEL="doubao-seedream-5-0-260128"
+	PROVIDER_DEFAULT_REF_MODEL="doubao-seedream-5-0-pro-260628"
 	PROVIDER_CAPS="size:any ref:multi seed:yes negative:yes quality:yes style:no n:10"
 	PROVIDER_HOST="ark.cn-beijing.volces.com"
+	PROVIDER_PROBE_PATH="/api/v3/models"
 }
 
 provider_doubao_auth() { openai_compat.auth "$ARK_API_KEY"; }

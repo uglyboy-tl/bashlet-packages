@@ -10,10 +10,24 @@ import openai_compat
 provider_openai_meta() {
 	PROVIDER_LABEL="OpenAI"
 	PROVIDER_CREDS=(OPENAI_API_KEY)
-	PROVIDER_DEFAULT_MODEL="gpt-image-1"
+	PROVIDER_DEFAULT_MODEL="gpt-image-2.5-flare"
+	PROVIDER_DEFAULT_REF_MODEL="gpt-image-2.5-sunburst"
 	PROVIDER_CAPS="size:any ref:none seed:no negative:no quality:yes style:yes n:10"
 	PROVIDER_HOST="api.openai.com"
 	PROVIDER_XGET_PREFIX="openai"
+	PROVIDER_PROBE_PATH="/v1/models"
+	# 手工兜底清单（配了 OPENAI_API_KEY 时会被 /v1/models 的活清单覆盖）。
+	# 2026-10-08 取自官方定价页的 "Image generation models" 段：
+	#   gpt-image-2.5-sunburst / 2.5-flare / 2 / 1.5 / 1-mini / 1
+	# 刻意不含这两个：
+	#   chatgpt-image-latest —— ChatGPT 侧的别名，API 未必认
+	#   gpt-5-image         —— 走 Responses API，不是 images/generations 这条路
+	PROVIDER_MODEL_LIST="gpt-image-2.5-sunburst
+gpt-image-2.5-flare
+gpt-image-2
+gpt-image-1.5
+gpt-image-1-mini
+gpt-image-1"
 }
 
 provider_openai_auth() { openai_compat.auth "$OPENAI_API_KEY"; }
@@ -46,7 +60,9 @@ provider_openai_body() {
 provider_openai_parse() { openai_compat.parse "$1"; }
 
 provider_openai_models() {
-	requests.json "$(requests.get "/v1/models")" '.data[].id | select(test("dall|image"))'
+	# 收紧到图像生成这条路：test("dall|image") 会把 gpt-5-image 也收进来，
+	# 而那个模型走 Responses API，在 images/generations 上调用会失败
+	requests.json "$(requests.get "/v1/models")" '.data[].id | select(test("^(gpt-image|dall-e)"))'
 }
 
 provider.register openai

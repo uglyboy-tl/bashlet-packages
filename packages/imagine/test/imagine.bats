@@ -279,7 +279,8 @@ teardown() { _imagine_teardown; }
 }
 
 @test "cli - models --live 对无列表 API 失败" {
-  run bash "$PROJECT_ROOT/imagine.sh" models cloudflare --live
+  # cloudflare 在 2026-10-08 接上了 /ai/models/search，于是改用仍没有列表 API 的 minimax
+  run bash "$PROJECT_ROOT/imagine.sh" models minimax --live
   [[ $status -ne 0 ]]
 }
 
@@ -300,14 +301,14 @@ teardown() { _imagine_teardown; }
   [[ -s $cache ]]
   grep -q '^\[providers\.agnes\]' "$cache"
   registry.reload
-  [[ "$(registry.get agnes default_model)" == "agnes-image-2.1-flash" ]]
-  [[ "$(provider.default_model agnes)" == "agnes-image-2.1-flash" ]]
+  [[ "$(registry.get agnes default_model)" == "agnes-image-2.5-flash" ]]
+  [[ "$(provider.default_model agnes)" == "agnes-image-2.5-flash" ]]
 }
 
 @test "unit - registry 覆盖适配器默认" {
   registry.ensure
   local cache="$(registry.cache)"
-  sed -i 's/agnes-image-2.1-flash/agnes-x/' "$cache"
+  sed -i 's/agnes-image-2.5-flash/agnes-x/' "$cache"
   registry.reload
   [[ "$(provider.default_model agnes)" == "agnes-x" ]]
 }
@@ -317,7 +318,7 @@ teardown() { _imagine_teardown; }
   local cache="$(registry.cache)"
   awk '/^\[providers\.agnes\]/{skip=1;next} /^\[/{skip=0} !skip' "$cache" > "$cache.tmp" && mv "$cache.tmp" "$cache"
   registry.reload
-  [[ "$(provider.default_model agnes)" == "agnes-image-2.1-flash" ]]
+  [[ "$(provider.default_model agnes)" == "agnes-image-2.5-flash" ]]
 }
 
 @test "unit - registry 坏数据不覆盖缓存" {
@@ -389,7 +390,7 @@ default_model = "agnes-remote"
 @test "unit - 模型解析优先级" {
   registry.ensure
   local cache="$(registry.cache)"
-  sed -i 's/agnes-image-2.1-flash/agnes-registry/' "$cache"
+  sed -i 's/agnes-image-2.5-flash/agnes-registry/' "$cache"
   registry.reload
   [[ "$(provider.resolve_model agnes '' '')" == "agnes-registry" ]]
   AGNES_IMAGE_MODEL=agnes-env
@@ -459,12 +460,50 @@ default_model = "agnes-remote"
 
 # ── CLI 离线测试 ──
 
-@test "cli - providers 表格列出适配器" {
-  run bash "$PROJECT_ROOT/imagine.sh" providers
+@test "cli - providers --offline 不发探活请求，全部 provider 都列出来" {
+  run bash "$PROJECT_ROOT/imagine.sh" providers --offline
   [[ $status -eq 0 ]]
   [[ $output == *agnes* ]]
   [[ $output == *cloudflare* ]]
   [[ $output == *openrouter* ]]
+  [[ $output == *zai* ]] # 缺凭证的也要出现在「不可用」段，而不是消失
+  [[ $output == *离线模式* ]]
+  [[ $output == *可用* ]]
+  [[ $output == *不可用* ]]
+}
+
+@test "cli - providers --caps 只给能力明细，不再叠一遍可用性表" {
+  run bash "$PROJECT_ROOT/imagine.sh" providers --caps
+  [[ $status -eq 0 ]]
+  [[ $output == *能力明细* ]]
+  [[ $output == *REF:* ]]
+  [[ $output == *SIZE:* ]]
+  [[ $output != *DEFAULT*MODEL* ]]
+  [[ $output != *不可用* ]]
+}
+
+@test "providers - 不可用的原因按状态给「下一步做什么」" {
+  run provider.probe_reason missing "OPENAI_API_KEY"
+  [[ $output == "缺 OPENAI_API_KEY" ]]
+  run provider.probe_reason rejected "-"
+  [[ $output == *"key 被上游拒绝"* ]]
+  run provider.probe_reason unreachable "不通（这家在墙外，配 XGET_BASE_URL 后重试）"
+  [[ $output == *XGET_BASE_URL* ]]
+  run provider.probe_reason noprobe "-"
+  [[ $output == *没有只读端点* ]]
+}
+
+@test "providers - 墙外三家的网络提示分「没配 XGET」与「配了还不通」两种" {
+  unset XGET_BASE_URL
+  run provider.probe_hint google
+  [[ $output == *"配 XGET_BASE_URL 后重试"* ]]
+  export XGET_BASE_URL="https://xget.example"
+  run provider.probe_hint google
+  [[ $output == *"检查 XGET_BASE_URL 本身"* ]]
+  # 国内那几家不给代理建议
+  run provider.probe_hint dashscope
+  [[ $output == "不通" ]]
+  unset XGET_BASE_URL
 }
 
 @test "cli - models 走 registry 清单（无 API 的 provider）" {
@@ -606,4 +645,56 @@ _imagine() {
     [[ $status -eq 0 ]] || return 1
     _check_ratio "$outfile" "16:9" || return 1
   done
+}
+
+@test "unit - models 无凭证时不初始化请求层，本地目录里的清单照样出" {
+  _fast_load source "$PROJECT_ROOT/imagine.sh"
+  unset OPENAI_API_KEY
+  registry.ensure
+  printf '\n[providers.openai]\nmodels = "cached-openai-1"\n' >> "$(registry.cache)"
+  registry.reload
+  compose.init() { echo "INIT-CALLED"; }
+  run cmd_models openai
+  [[ $status -eq 0 ]]
+  [[ $output == *"cached-openai-1"* ]]
+  [[ $output != *"INIT-CALLED"* ]]
+}
+
+@test "unit - models 有凭证时初始化请求层" {
+  _fast_load source "$PROJECT_ROOT/imagine.sh"
+  export OPENAI_API_KEY=sk-test
+  registry.ensure
+  printf '\n[providers.openai]\nmodels = "cached-openai-1"\n' >> "$(registry.cache)"
+  registry.reload
+  compose.init() { echo "INIT-CALLED"; }
+  run cmd_models openai
+  [[ $status -eq 0 ]]
+  [[ $output == *"INIT-CALLED"* ]]
+  [[ $output == *"cached-openai-1"* ]]
+}
+
+@test "unit - 一家凭证都没有时 generate 报缺 provider，并指向 imagine providers 而不是 command not found" {
+  _fast_load source "$PROJECT_ROOT/imagine.sh"
+  local v
+  for v in $(compgen -v | grep -E '_(API_KEY|API_TOKEN|ACCOUNT_ID)$' || true); do unset "$v"; done
+  run cmd_generate -p x
+  [[ $status -ne 0 ]]
+  [[ $output != *"command not found"* ]]
+  [[ $output == *"没有可用的 provider"* ]]
+  [[ $output == *"imagine providers --offline"* ]]
+}
+
+
+@test "unit - 非法 IMAGINE_PROBE_TIMEOUT 回退默认，不让探活崩掉" {
+  export OPENAI_API_KEY=sk-test IMAGINE_PROBE_TIMEOUT=abc
+  local dump="$BATS_TEST_TMPDIR"
+  requests.init() { :; }
+  requests.timeout() { printf '%s' "$1" > "$dump/timeout"; }
+  requests.base_url() { :; }
+  provider.auth() { :; }
+  requests.get() { return 1; }
+
+  run provider.probe openai
+  [[ $status -eq 0 ]]
+  [[ "$(cat "$dump/timeout")" == "8" ]]
 }

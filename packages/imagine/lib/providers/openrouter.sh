@@ -9,11 +9,13 @@ import openai_compat
 provider_openrouter_meta() {
 	PROVIDER_LABEL="OpenRouter"
 	PROVIDER_CREDS=(OPENROUTER_API_KEY)
-	PROVIDER_DEFAULT_MODEL="openai/gpt-image-1"
+	PROVIDER_DEFAULT_MODEL="qwen/qwen-image-3"
+	PROVIDER_DEFAULT_REF_MODEL="google/gemini-3.1-flash-image"
 	PROVIDER_CAPS="size:fixed ref:multi seed:yes negative:no quality:no style:no n:10"
 	PROVIDER_SIZES=(1024x1024 1536x1024 1024x1536)
 	PROVIDER_HOST="openrouter.ai"
 	PROVIDER_XGET_PREFIX="openrouter"
+	PROVIDER_PROBE_PATH="/api/v1/key"
 }
 
 provider_openrouter_auth() { openai_compat.auth "$OPENROUTER_API_KEY"; }

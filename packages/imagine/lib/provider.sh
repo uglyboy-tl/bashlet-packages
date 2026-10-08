@@ -12,22 +12,31 @@
 #
 # meta 可声明：PROVIDER_LABEL / PROVIDER_CREDS(数组) / PROVIDER_DEFAULT_MODEL /
 #   PROVIDER_DEFAULT_REF_MODEL / PROVIDER_CAPS / PROVIDER_SIZES(数组) /
-#   PROVIDER_HOST / PROVIDER_XGET_PREFIX / PROVIDER_FREE / PROVIDER_MODEL_LIST
+#   PROVIDER_HOST / PROVIDER_XGET_PREFIX / PROVIDER_FREE / PROVIDER_MODEL_LIST /
+#   PROVIDER_PROBE_PATH
+#
+# PROVIDER_PROBE_PATH 是「只读探活」端点（相对 PROVIDER_HOST）：`providers` 用它验证 key 是否
+# 真的能用，而不是只判断变量存不存在。没有这个声明的适配器在表里显示「没有只读端点」。
+# 探活用适配器自己的 provider_<name>_auth 发头，所以探活与生成走同一套认证，不需要单独声明。
 #
 # PROVIDER_CAPS 是唯一的能力真相，形如 "size:star ref:multi seed:yes negative:no quality:no style:no n:9"。
 # size 取 any/star/fixed/aspect/none；ref 取 none/one/multi；其余 yes/no。
 
 import core/log
+import ext/requests
+import std/fs
 import registry
 
 declare -gA PROV_LABEL=() PROV_CREDS=() PROV_DEFAULT_MODEL=() PROV_DEFAULT_REF_MODEL=()
 declare -gA PROV_CAPS=() PROV_SIZES=() PROV_HOST=() PROV_XGET=() PROV_FREE=() PROV_MODEL_LIST=()
+declare -gA PROV_PROBE=()
 declare -ga PROV_ORDER=()
 
 provider.register() {
 	local name="$1"
 	PROVIDER_LABEL="" PROVIDER_DEFAULT_MODEL="" PROVIDER_DEFAULT_REF_MODEL="" PROVIDER_CAPS=""
 	PROVIDER_HOST="" PROVIDER_XGET_PREFIX="" PROVIDER_FREE=false PROVIDER_MODEL_LIST=""
+	PROVIDER_PROBE_PATH=""
 	PROVIDER_CREDS=() PROVIDER_SIZES=()
 	"provider_${name}_meta" || {
 		log.error "provider 适配器 $name 的 meta 失败"
@@ -43,6 +52,7 @@ provider.register() {
 	PROV_XGET[$name]="$PROVIDER_XGET_PREFIX"
 	PROV_FREE[$name]="$PROVIDER_FREE"
 	PROV_MODEL_LIST[$name]="$PROVIDER_MODEL_LIST"
+	PROV_PROBE[$name]="$PROVIDER_PROBE_PATH"
 	PROV_ORDER+=("$name")
 }
 
@@ -140,6 +150,97 @@ provider.models_live() {
 	live="$("provider_${name}_models")" || return 1
 	[[ -n $live ]] || return 1
 	printf '%s\n' "$live"
+}
+
+# ── 只读探活：验证 key 真的能用（不碰生成接口）────────────────────────────────
+
+# provider.probe <name> → 一行 "<状态>\t<说明>"；状态取值见 cmd_providers 的图例。
+# 复用 provider.auth / provider.base_url，所以「走没走 XGET」与真实生成时完全一致：
+# 探活通过不保证能生成，但探活不通过就一定生成不了。
+provider.probe() {
+	local name="$1"
+	provider.creds_ok "$name" || {
+		printf 'missing\t%s' "$(provider.creds_missing "$name")"
+		return 0
+	}
+	local path="${PROV_PROBE[$name]:-}"
+	[[ -n $path ]] || {
+		printf 'noprobe\t-'
+		return 0
+	}
+
+	requests.init 2> /dev/null || {
+		printf 'noruntime\t缺 curl 或 jq'
+		return 0
+	}
+	# 探活要快：默认 120s 超时下，一家被墙的能拖住整个表。IMAGINE_PROBE_TIMEOUT 可覆盖，
+	# 探活是并发跑的所以它只影响最慢的那一家（网络差调大，想快点看到表就调小）。
+	# 非法值回退默认：非数字喂给 requests.timeout 会让子 shell 崩，状态落回 unknown 就分不清原因了。
+	local probe_timeout="${IMAGINE_PROBE_TIMEOUT:-8}"
+	[[ $probe_timeout =~ ^[0-9]+$ ]] || probe_timeout=8
+	requests.timeout "$probe_timeout"
+	requests.base_url "$(provider.base_url "$name")"
+	provider.auth "$name"
+
+	local resp code
+	resp="$(requests.get "$path")" || {
+		printf 'unreachable\t%s' "$(provider.probe_hint "$name")"
+		return 0
+	}
+	code="$(requests.status_code "$resp")"
+	case "$code" in
+		2*) printf 'ok\t-' ;;
+		401 | 403) printf 'rejected\t-' ;;
+		000 | 0) printf 'unreachable\t%s' "$(provider.probe_hint "$name")" ;;
+		*) printf 'http\tHTTP %s' "$code" ;;
+	esac
+}
+
+# 网络不通时的提示：声明了 XGET 前缀的正是墙外那三家（google / openai / openrouter），
+# 它们直连本来就不通，所以先问「XGET 配了没」，而不是笼统地说一句网络问题。
+provider.probe_hint() {
+	if [[ -n ${PROV_XGET[$1]:-} ]]; then
+		if [[ -n ${XGET_BASE_URL:-} ]]; then
+			printf '不通（已走 XGET，检查 XGET_BASE_URL 本身）'
+		else
+			printf '不通（这家在墙外，配 XGET_BASE_URL 后重试）'
+		fi
+	else
+		printf '不通'
+	fi
+}
+
+# 不可用那一行的原因。措辞按「用户下一步做什么」写，而不是复述内部状态码。
+provider.probe_reason() { # <状态> <说明>
+	case "$1" in
+		missing) printf '缺 %s' "$2" ;;
+		rejected) printf 'key 被上游拒绝（换一个）' ;;
+		unreachable) printf '%s' "$2" ;;
+		noprobe) printf '没有只读端点，无法验证（只能试生成）' ;;
+		noruntime) printf '%s' "$2" ;;
+		unknown) printf '探活没拿到结果（临时目录不可用？）' ;;
+		http) printf '%s' "$2" ;;
+		*) printf '%s' "$1" ;;
+	esac
+}
+
+# 并发探活所有凭证齐全的 provider → "<名>\t<状态>\t<说明>"。
+# 串行最坏是 N×超时；并发后总耗时约等于最慢的那一家。
+# 缺凭证的不探：原因就是 missing，没必要为它打一次网络。
+provider.probe_all() {
+	local dir name
+	dir="$(fs.mktemp -d)" || return 1
+	while IFS= read -r name; do
+		provider.creds_ok "$name" || continue
+		(
+			printf '%s\t%s\n' "$name" "$(provider.probe "$name")" > "$dir/$name"
+		) &
+	done < <(provider.list)
+	wait
+	# 目录为空（一个凭证都没配）时 cat 会以 1 退出：set -e 下会跳过下面的清理，
+	# 所以必须自己吞掉退出码，否则 probe_all 静默返回还泄漏临时目录。
+	cat "$dir"/* 2> /dev/null || true
+	rm -rf "$dir"
 }
 
 # provider.auto_select [需要参考图]  → 免费优先、有凭证、能力匹配的第一个

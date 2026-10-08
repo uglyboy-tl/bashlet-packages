@@ -9,10 +9,11 @@ import common
 provider_dashscope_meta() {
 	PROVIDER_LABEL="阿里云 DashScope"
 	PROVIDER_CREDS=(DASHSCOPE_API_KEY)
-	PROVIDER_DEFAULT_MODEL="qwen-image-plus"
-	PROVIDER_DEFAULT_REF_MODEL="wan2.7-image-pro"
+	PROVIDER_DEFAULT_MODEL="qwen-image-3.0"
+	PROVIDER_DEFAULT_REF_MODEL="wan2.7-image"
 	PROVIDER_CAPS="size:star ref:multi seed:yes negative:yes quality:yes style:no n:4"
 	PROVIDER_HOST="dashscope.aliyuncs.com"
+	PROVIDER_PROBE_PATH="/compatible-mode/v1/models"
 }
 
 provider_dashscope_auth() { requests.auth_bearer "$DASHSCOPE_API_KEY"; }

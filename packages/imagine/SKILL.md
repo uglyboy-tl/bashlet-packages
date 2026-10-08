@@ -23,12 +23,14 @@ scripts/imagine -p "..." --ref ref.png -o out.png                   # 图生图�
 scripts/imagine -p "..." --provider dashscope -m qwen-image-plus -o out.png
 scripts/imagine --provider dashscope --extra parameters.prompt_extend=false -p "..." -o out.png
 scripts/imagine --json -p "..." -o out.png                          # 结果以 JSON 写到 stdout
-scripts/imagine providers                                           # 列能力与凭证状态
+scripts/imagine providers                                           # 哪家能用（打只读端点验证 key）+ 缺什么
 scripts/imagine models [provider]                                   # 列默认模型 / 全部模型
 scripts/imagine update                                              # 手动刷新模型目录
 ```
 
-先跑 `scripts/imagine providers` 确认哪家有凭证；不指定 `--provider` 时脚本自动选（免费优先：agnes → cloudflare → 其他）。
+先跑 `scripts/imagine providers`：它给每家打一个只读端点，直接告出哪家能用、哪家缺什么变量、不通的原因
+（墙外三家会提示配 `XGET_BASE_URL`）。不指定 `--provider` 时脚本自动选（免费优先：agnes → cloudflare → 其他），
+选谁也会印在表底。没网时加 `--offline` 只看配置。
 
 ## 选项
 
@@ -72,6 +74,7 @@ scripts/imagine update                                              # 手动刷�
 | `XGET_BASE_URL` | 代理 base（仅对声明了前缀的 provider 生效） |
 | `IMAGINE_TIMEOUT` | 请求超时秒数，默认 120 |
 | `IMAGINE_RETRY` | 可恢复失败的重试次数，默认 2（4xx 不重试） |
+| `IMAGINE_PROBE_TIMEOUT` | `providers` 探活超时秒数，默认 8 |
 | `IMAGINE_REGISTRY_URL` / `IMAGINE_REGISTRY_TTL_HOURS` / `IMAGINE_REGISTRY_OFF` | 模型目录源 / 刷新间隔 / 关闭回源 |
 
 凭证可放包目录 `.env`；注意 `.env` 会覆盖同名环境变量（需环境变量优先时，`.env` 内用 `: "${VAR:=...}"` 写法）。

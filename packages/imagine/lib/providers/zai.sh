@@ -10,6 +10,7 @@ provider_zai_meta() {
 	PROVIDER_DEFAULT_MODEL="glm-image"
 	PROVIDER_CAPS="size:any ref:none seed:no negative:no quality:yes style:no n:4"
 	PROVIDER_HOST="api.z.ai"
+	PROVIDER_PROBE_PATH="/api/paas/v4/models"
 	PROVIDER_MODEL_LIST="glm-image"
 }
 
