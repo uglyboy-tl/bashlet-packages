@@ -7,6 +7,17 @@
 
 ## 1. X / Twitter —— 可接，且 queryId 的维护有确定方法
 
+> **2026-10-07 已接线**：`dig x "词"`（搜索）、`dig x --tweet <id|url>` 与 `dig fetch <推文链接>`
+> （单推，零凭证走 syndication）、`dig x --update-ids`（手动刷新，一般已自动完成）。仍需代理。
+> 与本节方案的差异：
+> - §1.2 的更正：搜索请求**不校验 cookie 真实性**，但 **queryId 只能靠登录态取**（main bundle 只在
+>   `x.com/home`，未登录 307 到登录页），所以 `X_AUTH_TOKEN` / `X_CT0` 仍是必需的；
+> - §1.3 设想的「BFS 展开 168 个 chunk」被实测简化：`main.*.js` 里直接有成对的
+>   `queryId:"…",operationName:"…"`（104 条），不必展开整张图；
+> - **不留内置 queryId**：写死的值过期后只报 403/404，看不出原因。缓存 30 天，403/404 时自动重取；
+> - 单页上限 20 条，**翻页仍未实现**。
+> 接线细节见 `sources.md` §3 与 `lib/sources/x.sh`。
+
 **结论：技术上完全可行，代价是「用户提供 cookie」+「一个刷新 queryId 的子命令」。** 价值高
 （技术/AI 话题的第一落点常常在 X，HN 与 GitHub 都滞后），所以一旦要做，这是最值得的一个。
 
@@ -30,9 +41,11 @@ curl -s -X POST -H "Authorization: Bearer $BEARER" https://api.x.com/1.1/guest/a
 # → 200 {"guest_token":"2107302643823767876"}
 ```
 
-**关键限制**：未授权的 GraphQL 请求一律返回 **404**。我用「正确的 queryId」与「故意写错的
-queryId」各打一次，**都是 404** —— 也就是说「queryId 过期」与「没登录」在外部无法区分。
-**所以不拿真 cookie 就无法验证任何 X 实现。** 这也是当初把它记下来而不是直接写代码的原因。
+**关键限制（2026-10-07 接线时更正）**：原记录是「未授权一律返回 404，与 queryId 过期无法区分」。
+重测得到的是 **403**（完全不带 cookie 头），而**只要带一个非空的 `auth_token`（值随便填，`0`/`x`/`deadbeef` 都行）
+就返回 200 与真实结果** —— SearchTimeline 只检查 cookie 是否存在、不验值。
+所以结论要改两条：**真 cookie 不是必需的**；但「queryId 过期」与「X 收紧 cookie 校验」仍然同形（403/404）。
+完整实测（含排除代理缓存与 cookie 注入的对照）见 `sources.md` §3。
 
 ### 1.3 queryId 会轮换，但可以自动提取（这是「好办法」）
 

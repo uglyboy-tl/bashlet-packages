@@ -31,6 +31,7 @@ dig 是 research skill 自带的站内检索脚本（skill 目录下 `scripts/di
 | `zhihu` | 中文一手讨论；热榜是「此刻中文互联网在讨论什么」的排序——这个排序 web 检索给不了 | 英文话题（搜不到） |
 | `v2ex` | 中文技术圈的实际做法与吐槽；给主题链接能连回复一起取（`dig fetch`） | 非技术、非中文；本机直连不通，取主题要走云端浏览器 |
 | `reddit` | 某个 subreddit 内的关键词搜索与最新帖；`-r` 一次拿**嵌套评论树**（免 key 走 Arctic Shift，不用代理） | 跨全站关键词搜索——免 key 层做不到，必须用 `-s` 圈定某个社区 |
+| `x` | 技术 / AI 话题的第一落点（HN 与 GitHub 常滞后几小时到几天）；人物与舆情的一手发言。已有链接时用 `dig x --tweet <id\|url>` 或 `dig fetch <链接>` 取单条（这条零凭证） | 需要 `X_AUTH_TOKEN` + `X_CT0`（取 queryId 用：F12 → Application → Cookies → `https://x.com` 复制 `auth_token` 与 `ct0`，两个值必须来自同一次登录会话）与代理；单页最多 20 条，热门词会漏 |
 
 ### 特定载体：只服务一类问题，别处拿不到
 
@@ -51,7 +52,7 @@ dig 是 research skill 自带的站内检索脚本（skill 目录下 `scripts/di
 | 这个方向研究到什么程度 | `arxiv` + `openalex` + `hn`（工程视角） |
 | 中文圈怎么看这件事 | `zhihu` + `v2ex`（有视频再加 `bilibili -t`） |
 | 某件事会不会发生 | `polymarket` + `hn` |
-| 人物舆情 / 新闻 | 不是 dig 的活，用 web 检索（已有具体链接时见 §七） |
+| 人物舆情 / 新闻 | `x` + web 检索（`x` 拿一手发言与现场反应，web 检索补时间线与背景；已有具体链接时见 §七） |
 
 `dig doctor` 会逐个源列出状态（可达到 / 不可达 / 缺依赖 / 缺凭证）——空结果时先用它区分「真没有」和「源挂了」。
 

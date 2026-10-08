@@ -110,6 +110,7 @@ setup() {
 		[polymarket]="https://polymarket.com/event/some-slug"
 		[wechat]="https://mp.weixin.qq.com/s/AWnQL3forAP-gB7e2ZEXdQ"
 		[v2ex]="https://www.v2ex.com/t/1000000"
+		[x]="https://x.com/alice/status/1234567890"
 	)
 	local src url
 	for src in "${!cases[@]}"; do
@@ -165,7 +166,7 @@ url_has() { [[ -n ${_SOURCE_URL_HOSTS[$1]:-} ]] || declare -F "$1.url.hosts" > /
 }
 
 @test "fetch: 路由表里的源集合与已接线清单一致" {
-	local -a wired=(hn github so arxiv openalex reddit bilibili discourse hf polymarket wechat v2ex)
+	local -a wired=(hn github so arxiv openalex reddit bilibili discourse hf polymarket wechat v2ex x)
 	local -A want=()
 	local src
 	for src in "${wired[@]}"; do

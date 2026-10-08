@@ -124,3 +124,4 @@ setup() {
 	assert_success
 	[ "$(wc -l < "$calls")" -eq 1 ]
 }
+
