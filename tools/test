@@ -22,6 +22,15 @@ _is_archived() {
 	return 1
 }
 
+# 路径是否落在存档包里（文档约定整包豁免，与 README 检查同一口径）
+_is_archived_path() {
+	local path="$1" a
+	for a in "${_ARCHIVED[@]}"; do
+		[[ $path == "$PACKAGES/$a" || $path == "$PACKAGES/$a"/* ]] && return 0
+	done
+	return 1
+}
+
 _collect() {
 	local pkg
 	for pkg in "$PACKAGES"/*/; do
@@ -29,6 +38,41 @@ _collect() {
 		_is_archived "$pkg" && continue
 		find "$PACKAGES/$pkg/test" -maxdepth 1 -name '*.bats' 2> /dev/null
 	done | sort
+}
+# 文档校验：只在全量测试时跑（约定见 AGENTS.md「文档约定」，由来见 docs/adr/0001-docs-layout.md）
+_docs_check() {
+	local rc=0 pkg d f base
+	for pkg in "$PACKAGES"/*/; do
+		pkg="$(basename "$pkg")"
+		_is_archived "$pkg" && continue
+		if [[ ! -e $PACKAGES/$pkg/README.md ]]; then
+			printf '缺少 README.md: packages/%s\n' "$pkg" >&2
+			rc=1
+		fi
+		for d in "$PACKAGES/$pkg/docs"/*/; do
+			[[ -d $d ]] || continue
+			[[ $(basename "$d") == adr ]] && continue
+			printf 'docs/ 下只允许 adr/ 子目录: packages/%s/docs/%s\n' "$pkg" "$(basename "$d")" >&2
+			rc=1
+		done
+	done
+	for d in "$ROOT/docs" "$PACKAGES"/*/docs "$PACKAGES"/*/references; do
+		[[ -d $d ]] || continue
+		_is_archived_path "$d" && continue
+		while IFS= read -r f; do
+			base="$(basename "$f")"
+			# README/CONTEXT/AGENTS/SKILL 是约定俗成的大写名（见 AGENTS.md「文档约定」）
+			[[ $base =~ ^(README|CONTEXT|AGENTS|SKILL)\.md$ ]] && continue
+			[[ $base =~ ^[a-z0-9]+(-[a-z0-9]+)*\.md$ ]] && continue
+			printf '文档名应为小写 kebab: %s\n' "${f#"$ROOT"/}" >&2
+			rc=1
+			# 不限深度：references/<目录>/x.md 这种嵌套也不能漏（docs 另有「只允许 adr」约束兜底）
+		done < <(find "$d" -name '*.md')
+	done
+	if ((rc == 0)); then
+		echo "文档校验通过"
+	fi
+	return "$rc"
 }
 
 main() {
@@ -60,6 +104,12 @@ main() {
 	local start=$SECONDS rc=0
 	"$BATS" "${targets[@]}" || rc=$?
 	printf '\n耗时 %ss\n' "$((SECONDS - start))"
+
+	# 指定单包是快速迭代路径，不该被文档问题挡住，所以这里只在全量时跑
+	if (($# == 0)); then
+		echo "文档校验"
+		_docs_check || rc=1
+	fi
 	exit "$rc"
 }
 

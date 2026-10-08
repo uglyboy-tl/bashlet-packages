@@ -101,7 +101,7 @@ provider.register example
 - 模型解析：`--model` > `<PROVIDER>_IMAGE_MODEL` > 目录 > 适配器兜底。
 - `imagine update` 手动同步刷新；`registry.toml` 人工维护，`models` 可用 `scripts/update-registry.sh` 拉活清单（CI 定时）。
 
-详见 `docs/REGISTRY.md`。
+详见 `docs/registry.md`。
 
 ## 用户面
 

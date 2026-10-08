@@ -98,7 +98,24 @@ EOF
 ## 用法
 
 \`\`\`bash
-tools/build $pkg      # 产出 packages/$pkg/build/$pkg
+$pkg <子命令>          # 一句话说明
+\`\`\`
+
+## 安装
+
+\`\`\`bash
+tools/build $pkg      # 产出 packages/$pkg/build/$pkg（OUTPUT_DIR 可改落点）
+\`\`\`
+
+## 示例
+
+\`\`\`bash
+$pkg --version
+\`\`\`
+
+## 开发
+
+\`\`\`bash
 tools/test $pkg       # 只跑这个包的测试
 \`\`\`
 EOF
