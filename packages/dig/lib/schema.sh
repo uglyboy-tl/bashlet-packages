@@ -64,14 +64,23 @@ read -r -d '' _SCHEMA_JQ_RENDER << 'JQ' || true
 def text_preview:
   (. // "") | gsub("\\s+"; " ") | sub("^ +"; "") | sub(" +$"; "")
   | if . == "" then "" else "  " + (if length > 200 then "\(.[0:200])…" else . end) + "\n" end;
-"\(.title // "(无标题)")\n  "
+# tags 是「这条到底是什么」的元信息：hn 的 comment、reddit 的 subreddit、arxiv 的分类都在这里。
+# 不渲染的话，HN 评论与主帖在终端里长得一样，评论的 points:0 会被误读成「抓取失败」而非「这是评论」。
+def tags_seg:
+  (.tags // []) | if length > 0 then "tags: " + join(",") else "" end;
+def is_comment: ((.tags // []) | index("comment")) != null;
+((.title // "") | if . == "" then "(无标题)" else . end)
++ (if is_comment then "  ← 评论，不是主帖（points 是这条评论的）" else "" end)
++ (if .truncated == true then "  ← 正文被上游截断，不是全文" else "" end)
++ "\n  "
 + (([ "[" + (.source // "?") + "]",
       (.author // ""),
       ((.engagement // {}) | to_entries
         | map(if (.value | type) == "number" then "\(.value) \(.key)" else "\(.key) \(.value)" end)
         | join(" ")),
       (.created_at // ""),
-      (.url // "")
+      (.url // ""),
+      tags_seg
     ] | map(select(. != "")) | join("  ·  ")))
 + "\n"
 + (.text | text_preview)

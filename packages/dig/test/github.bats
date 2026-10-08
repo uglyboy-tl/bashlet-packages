@@ -82,3 +82,12 @@ JSON
 	assert_failure
 	assert_output --partial "不是合法的 GitHub 仓库 / issue URL"
 }
+
+@test "github.search_url: gist 链接点明替代做法，不拿它当仓库去问 gh" {
+	gh() { echo "gh 不该被调用" >&2; return 1; }
+	run github.search_url "https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f"
+	assert_failure
+	assert_output --partial "gist 不在 dig 的 github 源里"
+	assert_output --partial "gh gist view"
+	refute_output --partial "gh 不该被调用"
+}

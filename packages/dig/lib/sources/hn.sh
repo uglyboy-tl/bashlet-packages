@@ -112,7 +112,7 @@ hn.map() {
         author: (.author // ""),
         created_at: (.created_at // ""),
         engagement: { points: (.points // 0), comments: (.num_comments // 0) },
-        tags: (._tags // []),
+        tags: ((._tags // []) | map(select(test("^(author|story)_") | not))),
         query: $query
       }'
 }
@@ -129,7 +129,7 @@ hn.map_comments() {
         author: (.author // ""),
         created_at: (.created_at // ""),
         engagement: { points: (.points // 0) },
-        tags: (._tags // []),
+        tags: ((._tags // []) | map(select(test("^(author|story)_") | not))),
         query: $query
       }'
 }

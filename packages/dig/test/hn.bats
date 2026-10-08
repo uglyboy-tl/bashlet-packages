@@ -33,6 +33,18 @@ JSON
 	assert_output '["99","S","hello & bye","a","comment"]'
 }
 
+@test "hn.map_comments: 过滤 Algolia 内部标签（author_* / story_*），只留可读标签" {
+	cat > "$BATS_TEST_TMPDIR/hnc3.json" << 'JSON'
+{"hits":[{"objectID":"99","story_title":"S","author":"a",
+  "created_at":"2026-01-01T00:00:00Z","comment_text":"<p>x</p>",
+  "_tags":["comment","author_a","story_49823582"]}]}
+JSON
+	run hn.map_comments < "$BATS_TEST_TMPDIR/hnc3.json"
+	assert_success
+	assert_jq '[.tags]'
+	assert_output '[["comment"]]'
+}
+
 # ========== -u：按 URL 直取单条 ==========
 
 @test "hn.search_url: 打 items 端点并把 item 对齐成 map 的 hit" {

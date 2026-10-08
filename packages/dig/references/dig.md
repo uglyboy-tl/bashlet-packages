@@ -17,7 +17,7 @@ dig 是 research skill 自带的站内检索脚本（skill 目录下 `scripts/di
 | 源 | 独有的信息 | 什么时候别指望它 |
 | --- | --- | --- |
 | `github` | 某个库 / 工具**现在到底怎么样**：issue 与 PR 的 `state`、讨论、commit。`-T repos` 找项目、`-T code` 找实现、`-T commits` 找改动、`-T discussions` 找已经搬到 Discussions 的问答 | 纯概念 / 方法论问题——那里没有对应条目 |
-| `hn` | 技术圈的公开观点与投票；`-T comments` 搜评论语料（「谁在哪条帖子下说过 X」） | 非技术话题；口味偏创业 / 前端 / 工具 |
+| `hn` | 技术圈的公开观点与投票；`-T comments` 搜评论语料（「谁在哪条帖子下说过 X」） | 非技术话题；口味偏创业 / 前端 / 工具。`dig fetch <hn item 链接>`（`dig hn -u`）指向评论时返回的是那条评论本身，不是主帖；要主帖改用 `dig hn "<标题词>" -T stories -p all` |
 | `so` | 「怎么做 X」的实操问答，以及多年沉淀的高赞答案（`-a` 取） | 开放式设计问题（会被关掉）；2023 年后的新事物（社区活跃度已降） |
 
 ### 按话题接：话题匹配时才有增量
@@ -30,8 +30,8 @@ dig 是 research skill 自带的站内检索脚本（skill 目录下 `scripts/di
 | `hf` | 模型 / 数据集的下载量与点赞（`-T datasets` 换数据集） | 不是 AI 话题 |
 | `zhihu` | 中文一手讨论；热榜是「此刻中文互联网在讨论什么」的排序——这个排序 web 检索给不了 | 英文话题（搜不到） |
 | `v2ex` | 中文技术圈的实际做法与吐槽；给主题链接能连回复一起取（`dig fetch`） | 非技术、非中文；本机直连不通，取主题要走云端浏览器 |
-| `reddit` | 某个 subreddit 内的关键词搜索与最新帖；`-r` 一次拿**嵌套评论树**（免 key 走 Arctic Shift，不用代理） | 跨全站关键词搜索——免 key 层做不到，必须用 `-s` 圈定某个社区 |
-| `x` | 技术 / AI 话题的第一落点（HN 与 GitHub 常滞后几小时到几天）；人物与舆情的一手发言。已有链接时用 `dig x --tweet <id\|url>` 或 `dig fetch <链接>` 取单条（这条零凭证） | 需要 `X_AUTH_TOKEN` + `X_CT0`（取 queryId 用：F12 → Application → Cookies → `https://x.com` 复制 `auth_token` 与 `ct0`，两个值必须来自同一次登录会话）与代理；单页最多 20 条，热门词会漏 |
+| `reddit` | 某个 subreddit 内的关键词搜索与最新帖；`-r` 一次拿**嵌套评论树**（免 key 走 Arctic Shift，不用代理） | 跨全站关键词搜索做不到（必须 `-s` 圈定社区）；同一 sub 的关键词搜索也会被上游限流，失败就隔一会儿重试或改用更短的词；有链接时优先 `dig fetch <帖子链接> -r N`（比关键词搜索稳） |
+| `x` | 技术 / AI 话题的第一落点（HN 与 GitHub 常滞后几小时到几天）；人物与舆情的一手发言。已有链接时用 `dig x --tweet <id\|url>` 或 `dig fetch <链接>` 取单条（这条零凭证，长推文也给全文） | 需要 `X_AUTH_TOKEN` + `X_CT0`（取 queryId 用：F12 → Application → Cookies → `https://x.com` 复制 `auth_token` 与 `ct0`，两个值必须来自同一次登录会话）与代理；单页最多 20 条，热门词会漏 |
 
 ### 特定载体：只服务一类问题，别处拿不到
 

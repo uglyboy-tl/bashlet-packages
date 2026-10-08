@@ -20,6 +20,15 @@ setup() {
 	assert_output --partial "doctor"
 }
 
+@test "dig: 顶层描述由注册表拼出，不是写死的旧源清单" {
+	run bash dig.sh
+	assert_success
+	local first="${lines[0]}"
+	[[ $first == *"按站点取数的工具箱"* ]]
+	[[ $first == *"openalex"* && $first == *"wechat"* ]]
+	refute_output --partial "Stack Overflow"
+}
+
 @test "dig: 未知子命令报错" {
 	run bash dig.sh nosuchcmd
 	assert_failure

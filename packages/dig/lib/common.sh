@@ -23,7 +23,11 @@ declare -g _DIG_HTTP_STATUS=""
 # curl/jq 缺失时不让 requests.init 内部 exit（system.command.required 会 exit 1，
 # 那样 dig.http.probe 的「缺依赖」分支永远到不了、doctor 也拿不到那一行），
 # 而是自己先判定并只返回非 0。
+# 参数 --no-creds：只带代理，不带 DIG_COOKIE / DIG_AUTH —— 给第三方镜像用（站点凭证不发往无关域名）。
 dig.requests.init() {
+	local no_creds=false
+	[[ ${1:-} == "--no-creds" ]] && no_creds=true
+
 	local missing=""
 	system.command.exist curl || missing+="${missing:+, }curl"
 	system.command.exist jq || missing+="${missing:+, }jq"
@@ -34,8 +38,10 @@ dig.requests.init() {
 
 	local -a extra=()
 	[[ -n ${DIG_PROXY:-} ]] && extra+=(--proxy "$DIG_PROXY")
-	[[ -n ${DIG_COOKIE:-} ]] && extra+=(-H "Cookie: $DIG_COOKIE")
-	[[ -n ${DIG_AUTH:-} ]] && extra+=(-H "Authorization: $DIG_AUTH")
+	if [[ $no_creds == false ]]; then
+		[[ -n ${DIG_COOKIE:-} ]] && extra+=(-H "Cookie: $DIG_COOKIE")
+		[[ -n ${DIG_AUTH:-} ]] && extra+=(-H "Authorization: $DIG_AUTH")
+	fi
 	# bash 4.3 + set -u 下，空数组直接展开 "${extra[@]}" 会报 unbound：用 + 展开兜住
 	requests.init ${extra[@]+"${extra[@]}"} 2> /dev/null
 }
@@ -58,6 +64,18 @@ dig.clamp() { # <请求值> <上限> <上游名>
 	else
 		printf '%s' "$want"
 	fi
+}
+
+# 失败响应体里的前 200 字（多行压成一行）：4xx/5xx 常在体里写真正的原因
+# （如 Arctic Shift 的 {"error":"Timeout. Maybe slow down a bit"}），只报状态码会被读成「源不可用」。
+# 先删 C0 控制字符（保留 \t \n \r 供下一步压成空格）：响应体是远端可控的，原样打到终端
+# 可注入 ANSI/OSC 转义序列（改标题、写剪贴板、伪造输出）。
+dig.http.body_snippet() {
+	local s
+	s="$(requests.text "$1" 2> /dev/null || true)"
+	s="$(printf '%s' "$s" | tr -d '\000-\010\013\014\016-\037\177' | tr -s '[:space:]' ' ')"
+	# 用 bash 子串（按当前 locale 的字符）而不是 cut -c（C locale 下会从多字节字符中间截断）
+	printf '%s' "${s:0:200}"
 }
 
 # 带重试的请求：传输层失败（连不上/DNS/证书/超时）与 429 / 5xx 才重试，退避 2s、4s…
@@ -92,7 +110,9 @@ dig.http.request() {
 				return 0
 			fi
 			if [[ $rc == "0" && $code != "000" && $code != "0" && ! $code =~ $retry_re ]]; then
-				log.error "请求被拒：$url (HTTP $code)"
+				local early_snippet
+				early_snippet="$(dig.http.body_snippet "$resp")"
+				log.error "请求被拒：$url (HTTP $code)${early_snippet:+：$early_snippet}"
 				return 1
 			fi
 		fi
@@ -108,7 +128,9 @@ dig.http.request() {
 		elif [[ $rc != "0" || $code == "000" || $code == "0" ]]; then
 			log.error "无法连接 $url：网络不通（curl exit $rc）。若该站点需代理，设 DIG_PROXY（要持久化就写进包内 .env）"
 		else
-			log.error "请求被拒：$url (HTTP $code)，已重试 $((i - 1)) 次"
+			local snippet
+			snippet="$(dig.http.body_snippet "$resp")"
+			log.error "请求被拒：$url (HTTP $code)，已重试 $((i - 1)) 次${snippet:+：$snippet}"
 		fi
 		return 1
 	done
@@ -120,6 +142,25 @@ dig.http.get() {
 	shift
 	dig.requests.init || return $?
 	dig.http.request GET "$url$(requests.query.build "$@")" "" ""
+}
+
+# 面向第三方镜像的 GET：带代理（可达性），但不带 DIG_COOKIE / DIG_AUTH。
+# 临时改全局 _REQUESTS_CURL_EXTRA，用完恢复，免得影响同进程后续请求。
+dig.http.get_public() {
+	local url="$1"
+	shift
+
+	local -a saved=()
+	# ${var+set} 而不是 ${#arr[@]}：后者在变量未定义时会被 set -u 当致命错误
+	if [[ ${_REQUESTS_CURL_EXTRA+set} ]]; then saved=("${_REQUESTS_CURL_EXTRA[@]}"); fi
+
+	dig.requests.init --no-creds || return $?
+	local rc=0
+	dig.http.request GET "$url$(requests.query.build "$@")" "" "" || rc=$?
+
+	_REQUESTS_CURL_EXTRA=()
+	if ((${#saved[@]})); then _REQUESTS_CURL_EXTRA=("${saved[@]}"); fi
+	return $rc
 }
 
 # POST JSON 并取回响应体

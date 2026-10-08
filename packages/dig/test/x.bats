@@ -293,6 +293,46 @@ JSON
 	assert_output --partial "取不到这条推文"
 }
 
+@test "x.tweet: note tweet 用 fxtwitter 补全文（syndication 只给截断版）" {
+	x.get() {
+		printf '%s' '{"id_str":"111","text":"truncated 280 chars","created_at":"2026-10-07T00:00:00.000Z","note_tweet":{"id":"n"},"user":{"screen_name":"a"}}'
+	}
+	dig.http.get_public() {
+		printf '%s' "$1" > "$BATS_TEST_TMPDIR/fx_url"
+		printf '%s' '{"code":200,"tweet":{"text":"FULL note tweet body"}}'
+	}
+
+	run x.tweet 111
+	assert_success
+	assert_output --partial '"text":"FULL note tweet body"'
+
+	run cat "$BATS_TEST_TMPDIR/fx_url"
+	assert_output "https://api.fxtwitter.com/a/status/111"
+}
+
+@test "x.tweet: 补全文失败时告警，仍给截断版而不是静默" {
+	x.get() {
+		printf '%s' '{"id_str":"111","text":"truncated 280 chars","created_at":"2026-10-07T00:00:00.000Z","note_tweet":{"id":"n"},"user":{"screen_name":"a"}}'
+	}
+	dig.http.get_public() { return 1; }
+
+	run x.tweet 111
+	assert_success
+	assert_output --partial "长推文"
+	assert_output --partial "truncated":true
+	assert_output --partial "truncated 280 chars"
+}
+
+@test "x.tweet.map: truncated 标记透传到条目（供下游区分截断与全文）" {
+	cat > "$BATS_TEST_TMPDIR/t3.json" << 'JSON'
+{"id_str":"333","text":"cut off here","truncated":true,"created_at":"2026-10-07T00:00:00.000Z","user":{"screen_name":"a"}}
+JSON
+	run x.tweet.map < "$BATS_TEST_TMPDIR/t3.json"
+	assert_success
+	assert_jq '[.id,.truncated]'
+	assert_output '["333",true]'
+}
+
 # ========== queryId 的缓存与刷新 ==========
 
 @test "x.ops.query_id: 没有缓存又没有真 cookie 时明确失败（刻意不留内置值）" {

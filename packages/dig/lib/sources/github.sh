@@ -76,6 +76,12 @@ github.search() {
 # 单条：REST 端点返回 snake_case 单对象，先对齐成 gh search 的 camelCase 形状再走
 github.search_url() {
 	local url="$1" kind o r n body parsed
+	# gist.github.com 是 github.com 的子域，fetch 的子域匹配会把它路由到这里，但 gist 不是仓库：
+	# 拿它去问 gh 只会得到一句 "Not Found"。点明替代做法，不让调用者猜。
+	if [[ ${url,,} == *gist.github.com* ]]; then
+		log.error "gist 不在 dig 的 github 源里：取正文优先 gh gist view <id> --raw，失败时退到 fetch_content"
+		return 1
+	fi
 	parsed="$(github.url.parse "$url")" || {
 		log.error "不是合法的 GitHub 仓库 / issue URL：$url"
 		return 1

@@ -155,6 +155,30 @@ html_text() { "$(schema.jq.bin)" -rn --arg t "${1:-}" "$_SCHEMA_JQ_LIB"'$t | htm
 	[ "${#lines[@]}" -eq 2 ]
 }
 
+@test "schema.render: tags 进渲染，comment 额外标出「不是主帖」" {
+	run schema.render <<< '{"source":"hn","title":"T","tags":["story"],"url":"https://x/"}'
+	assert_success
+	assert_output --partial "tags: story"
+	refute_output --partial "不是主帖"
+
+	run schema.render <<< '{"source":"hn","title":"","author":"a","tags":["comment"],"url":"https://x/"}'
+	assert_success
+	assert_output --partial "评论，不是主帖"
+	assert_output --partial "tags: comment"
+}
+
+@test "schema.render: 标题为空串时也回退「(无标题)」（// 只兜 null）" {
+	run schema.render <<< '{"source":"hn","title":"","tags":["comment"],"url":"https://x/"}'
+	assert_success
+	assert_output --partial "(无标题)"
+}
+
+@test "schema.render: truncated:true 标出正文被截断" {
+	run schema.render <<< '{"source":"x","title":"T","text":"half","truncated":true,"url":"https://x/"}'
+	assert_success
+	assert_output --partial "正文被上游截断"
+}
+
 @test "schema.render: 人类可读两行输出" {
 	run schema.render <<< '{"source":"hn","title":"Hi","author":"pg","created_at":"2025-01-01T00:00:00Z","url":"https://x/","engagement":{"points":3}}'
 	assert_success

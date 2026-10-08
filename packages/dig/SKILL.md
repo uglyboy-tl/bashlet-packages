@@ -19,13 +19,13 @@ description: 深度研究:多轮检索 + 交叉验证,产出带引用来源的�
 | 主对话已很长,再多塞材料可能触发压缩 | 委派 - 压缩会丢掉早期任务要求 |
 | 用户明确说「用 subagent / 委派」 | 委派,这是用户意志 |
 
-**委派**给 `researcher`(它自带联网与检索工具,规则就在它自己的定义里,不用你交代规范)。委派前不要自己先搜一遍。它不带本对话的上下文,prompt 必须自包含:问题、档位,加上必要事实(用户的约束、范围、已知结论写进去,否则它会重新发现或答偏):
+**委派**给 `researcher`(它自带联网与检索工具,规则就在它自己的定义里,不用你交代规范)。委派前不要自己先搜一遍。它不带本对话的上下文,prompt 必须自包含:问题、档位,加上必要事实(用户的约束、范围、已知结论写进去,否则它会重新发现或答偏)。下面的 `<skill 目录>` 是占位符,**写进 prompt 前必须替换成本 skill 的实际绝对路径**（子代理看不到本 skill 的目录）:
 
     subagent({
       subagent_type: "researcher",
       description: "深度研究: <问题摘要>",
       inherit_context: false,
-      prompt: "用户问题:<问题>。档位:<quick|standard|deep>。必要事实:<相关路径 / 范围 / 用户约束 / 已知结论>。可用工具:dig——站内检索,网页抓不回正文时可用 `dig fetch <url>`;脚本 <skill 目录>/scripts/dig,能力与用法见 <skill 目录>/references/dig.md。",
+      prompt: "用户问题:<问题>。档位:<quick|standard|deep>。必要事实:<相关路径 / 范围 / 用户约束 / 已知结论>。可用工具:dig——站内检索工具箱(x / hn / reddit / github / arxiv / zhihu …),网页抓不回正文时用 `dig fetch <url>`;脚本 <skill 目录>/scripts/dig,先读 <skill 目录>/references/dig.md(各源能力与陷阱);检索为空或源报错时可以跑 `dig doctor` 区分「真没有」和「源挂了」。",
     })
 
 researcher 声明后台运行:调用后本轮即结束,只回一句「已委派 researcher 后台研究」,不要声称已拿到结果;等完成通知到达,再把它交付的报告原样转达给用户(报告本身就是交付物)。若 spawn 失败或提示 agent 类型未知,改用下面的方式。

@@ -353,6 +353,17 @@ x.tweet.id() {
 	return 1
 }
 
+# syndication 对长文（note tweet）只回截断版：响应里有 note_tweet 对象，但 text 停在约 280 字。
+# api.fxtwitter.com 是零凭证的公开镜像，给全文（.tweet.text）；只在确实截断时多打一次请求。
+# 走 get_public：X 的 DIG_COOKIE 不能发给这个第三方域名。
+x.tweet.full_text() {
+	local user="$1" id="$2" body
+	# user 来自远端 JSON，拼进 URL 前限回 X 允许的用户名字符集
+	[[ $user =~ ^[A-Za-z0-9_]+$ ]] || return 1
+	body="$(dig.http.get_public "https://api.fxtwitter.com/${user}/status/${id}")" || return 1
+	printf '%s' "$body" | "$(schema.jq.bin)" -r '.tweet.text // empty' 2> /dev/null
+}
+
 # cdn.syndication.twimg.com 的 token 参数必须存在、但值不校验（实测 x / wrongtoken 都返回
 # 完整数据），所以这里不实现那套 base36 算法，给个固定值。哪天 X 开始校验，再补算法。
 x.tweet() {
@@ -367,6 +378,19 @@ x.tweet() {
 	if [[ "$(printf '%s' "$body" | "$(schema.jq.bin)" -r 'has("id_str")' 2> /dev/null)" != "true" ]]; then
 		log.error "取不到这条推文（id=$id）：可能不存在、已删除，或作者设了保护 —— syndication 端点对这类情况只回 {}"
 		return 1
+	fi
+
+	# note_tweet 出现 = syndication 只给了截断正文，补全文；补不到时告警，不静默给半句
+	if [[ "$(printf '%s' "$body" | "$(schema.jq.bin)" -r 'has("note_tweet")' 2> /dev/null)" == "true" ]]; then
+		local user full
+		user="$(printf '%s' "$body" | "$(schema.jq.bin)" -r '.user.screen_name // "i"' 2> /dev/null)"
+		if full="$(x.tweet.full_text "$user" "$id")" && [[ -n $full ]]; then
+			body="$(printf '%s' "$body" | "$(schema.jq.bin)" -c --arg t "$full" '.text = $t')"
+		else
+			# 标记进 JSON：只打 stderr 的话，只读 stdout 的下游会把截断文本当全文
+			body="$(printf '%s' "$body" | "$(schema.jq.bin)" -c '.truncated = true')"
+			log.warn "这是长推文（note tweet），syndication 只回约 280 字的截断版，取全文失败：text 不完整（条目带 truncated:true）"
+		fi
 	fi
 	printf '%s' "$body"
 }
@@ -387,7 +411,8 @@ x.tweet.map() {
       # syndication 端点的键是复数 hashtags；单数写法也接（老响应与部分变体）
       tags: [(.entities.hashtags // .entities.hashtag // [])[] | .text // empty],
       query: $query
-    }'
+    }
+    + (if .truncated == true then { truncated: true } else {} end)'
 }
 
 # dig fetch <推文链接>：与 --tweet 同一条路，只是入口从链接进来（零凭证）

@@ -146,12 +146,19 @@ cmd_fetch() {
 }
 
 main() {
-	args.init "按站点取数的工具箱：HN / GitHub / Stack Overflow / arXiv / 知乎 / 微信读书"
-	args.add_options "version" "v" "显示版本信息"
-
 	local src
 	local -a srcs=()
 	mapfile -t srcs < <(source.list)
+
+	# 顶层描述由注册表拼出来：之前写死 6 个名字，实际有 16 个源，加源时必然忘了同步
+	local desc="按站点取数的工具箱：" sep=""
+	for src in "${srcs[@]}"; do
+		desc+="$sep$src"
+		sep=" / "
+	done
+	args.init "$desc"
+	args.add_options "version" "v" "显示版本信息"
+
 	for src in "${srcs[@]}"; do
 		args.add_subcommand "$src" "$(source.desc "$src")" "_dig_source"
 	done

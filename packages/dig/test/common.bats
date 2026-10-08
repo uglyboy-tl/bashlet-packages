@@ -56,6 +56,47 @@ setup() {
 	assert_output --partial "选项 -n 需要正整数"
 }
 
+@test "dig.http.body_snippet: 多行响应体压成一行并截到 200 字" {
+	requests.init 2> /dev/null
+	local b64
+	b64="$(printf '%s\n%s' '{"error":"Timeout.' 'Maybe slow down a bit"}' | base64 -w0)"
+	run dig.http.body_snippet "{\"status_code\":422,\"curl_exit\":0,\"headers\":{},\"body\":\"$b64\",\"success\":false}"
+	assert_success
+	assert_output '{"error":"Timeout. Maybe slow down a bit"}'
+}
+
+@test "dig.http.body_snippet: 删掉 ANSI 转义等控制字符（远端响应体不可信）" {
+	requests.init 2> /dev/null
+	local b64
+	b64="$(printf '%b' 'evil\033]0;pwned\007END' | base64 -w0)"
+	run dig.http.body_snippet "{\"status_code\":422,\"curl_exit\":0,\"headers\":{},\"body\":\"$b64\",\"success\":false}"
+	assert_success
+	assert_output 'evil]0;pwnedEND'
+}
+
+@test "dig.requests.init: --no-creds 不带 Cookie/Authorization，但保留代理" {
+	export DIG_COOKIE='c=1' DIG_AUTH='Bearer x' DIG_PROXY='http://p:1'
+	dig.requests.init --no-creds
+	local extra=" ${_REQUESTS_CURL_EXTRA[*]} "
+	[[ $extra != *"Cookie"* ]]
+	[[ $extra != *"Authorization"* ]]
+	[[ $extra == *"--proxy"* ]]
+}
+
+@test "dig.http.get_public: 请求不带凭证，用完恢复 _REQUESTS_CURL_EXTRA" {
+	export DIG_COOKIE='c=1' DIG_AUTH='Bearer x'
+	dig.requests.init
+	local before="${_REQUESTS_CURL_EXTRA[*]}"
+
+	dig.http.request() { printf '%s' "${_REQUESTS_CURL_EXTRA[*]}"; return 0; }
+	local out
+	out="$(dig.http.get_public "https://api.fxtwitter.com/a/status/1")"
+	[[ $out != *"Cookie"* && $out != *"Authorization"* ]]
+
+	dig.http.get_public "https://api.fxtwitter.com/a/status/1" > /dev/null || true
+	assert_equal "${_REQUESTS_CURL_EXTRA[*]}" "$before"
+}
+
 @test "dig.http.probe: 传输层失败报「网络不通」rc=2，而不是 HTTP 0" {
 	# 关闭端口 = 立刻连接被拒（curl exit 7），不用等超时
 	run dig.http.probe "http://127.0.0.1:9/x"
