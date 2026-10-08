@@ -1,24 +1,29 @@
 #!/usr/bin/env bash
 # 维护者 / CI 工具：把各家活清单合并进 registry.toml 的 models 字段。
-# default_model 与 default_ref_model 是人工决策，本脚本不动；models 只合并不删除，
-# 因此人工添加的条目不会被定时任务抹掉（删除请手动改并提 PR）。
+# default_model 与 default_ref_model 是人工决策，本脚本不改（但会检查它们还在不在活清单里）。
+# models 默认**以活清单为准替换**：上游自己给的清单是权威，已下线的模型会被清掉，被清掉的
+# 条目逐条打印出来让人看见。想保留旧条目（合并语义）就加 --merge。
 # 缺凭证或该家没有模型列表 API 时，保留原有 models。
 #
-# 用法: scripts/update-registry.sh [-o registry.toml]
+# 用法: scripts/update-registry.sh [-o registry.toml] [--merge]
 #
 # 依赖: bash、jq、curl（与 imagine 运行时一致）；凭证走环境变量或包目录 .env。
 
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 out="$ROOT/registry.toml"
+merge=false
 while (($#)); do
 	case "$1" in
 		-o | --output)
 			out="${2:?缺少输出路径}"
 			shift
 			;;
+		--merge)
+			merge=true
+			;;
 		-h | --help)
-			echo "用法: update-registry.sh [-o registry.toml]"
+			echo "用法: update-registry.sh [-o registry.toml] [--merge]"
 			exit 0
 			;;
 		*)
@@ -89,10 +94,30 @@ for name in $providers; do
 	# old 也过一遍，防手改引入非法值
 	old_list=$(_registry_sanitize "${old// /$'\n'}")
 	if [[ -n $live ]]; then
-		# 合并：以活清单为主，人工条目（不在活清单里）追加到末尾；不自动删旧
-		models=$(printf '%s\n%s' "$live" "$old_list" | awk 'NF && !seen[$0]++' | tr '\n' ' ')
+		# 默认模型是人工决策、脚本不改，但它若已不在活清单里就是「跑起来直接 404」级别的问题，
+		# 而表里看不出来 —— 必须喊出来
+		if [[ -n $def ]] && ! printf '%s\n' "$live" | grep -qxF "$def"; then
+			printf '  %-12s 默认模型 %s 已不在活清单里！\n' "$name" "$def" >&2
+		fi
+		if [[ -n $ref ]] && ! printf '%s\n' "$live" | grep -qxF "$ref"; then
+			printf '  %-12s 参考图默认模型 %s 已不在活清单里！\n' "$name" "$ref" >&2
+		fi
+
+		# 旧清单里活清单没有的条目：要么已下线，要么上游 API 不返回它 —— 两种都该让人看见
+		removed=$(printf '%s\n' "$old_list" | awk 'NF && !seen[$0]++' | grep -vxF -f <(printf '%s\n' "$live") || true)
+		if [[ -n $removed ]]; then
+			printf '  %-12s 移除 %s 个已不在活清单里的模型：%s\n' \
+				"$name" "$(printf '%s\n' "$removed" | grep -c .)" "$(printf '%s' "$removed" | tr '\n' ' ')" >&2
+		fi
+
+		if [[ $merge == true ]]; then
+			models=$(printf '%s\n%s' "$live" "$removed" | awk 'NF && !seen[$0]++' | tr '\n' ' ')
+		else
+			models=$(printf '%s\n' "$live" | awk 'NF && !seen[$0]++' | tr '\n' ' ')
+		fi
 		models="${models% }"
-		printf '  %-12s %s 个模型（合并）\n' "$name" "$(printf '%s' "$models" | wc -w)" >&2
+		printf '  %-12s %s 个模型（%s）\n' "$name" "$(printf '%s' "$models" | wc -w)" \
+			"$(if [[ $merge == true ]]; then echo 合并; else echo 替换; fi)" >&2
 	else
 		models="${old_list//$'\n'/ }"
 		printf '  %-12s 跳过（无凭证或无列表 API）\n' "$name" >&2
