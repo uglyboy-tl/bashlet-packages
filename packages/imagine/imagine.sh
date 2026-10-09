@@ -370,20 +370,24 @@ main() {
 	args.add_subcommand "providers" "列出各 provider 的能力与凭证状态" "cmd_providers"
 	args.add_subcommand "update" "从远端刷新模型目录" "cmd_update"
 
-	local cmd="${1:-}" arg
+	local cmd="${1:-}" arg need_deps=true
 
-	# -v 不依赖 jq/curl，先短路
+	# -v 不需要依赖，直接短路；-h/--help 要放行（帮助文本在 cmd_generate 与各 handler 里渲染，
+	# 拦住它等于让 `imagine --help` 也要求装 jq）
 	for arg in "$@"; do
-		[[ $arg == "-v" || $arg == "--version" ]] && {
-			usage.version
-			exit 0
-		}
+		case $arg in
+			-v | --version)
+				usage.version
+				exit 0
+				;;
+			-h | --help) need_deps=false ;;
+		esac
 	done
 
 	# 依赖检查放这里，一次覆盖所有命令。散在各命令里会漏：compose.init / registry 的失败
 	# 会被调用方的 `|| return 1` 吞掉，用户连「缺什么」都看不到。
 	# providers 豁免：它自己用 requests.available 把缺什么显示在表里。
-	if [[ $cmd != providers ]]; then
+	if [[ $need_deps == true && $cmd != providers ]]; then
 		json.require
 		requests.curl.available || {
 			log.error "缺少依赖：curl"
