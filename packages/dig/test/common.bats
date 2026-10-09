@@ -32,7 +32,8 @@ setup() {
 }
 
 @test "dig.requests.init: 缺 curl 时返回非 0 而不是 exit" {
-	# 覆盖 system.command.exist 假装没装 curl；若 init 直接 exit，本测试会整体终止
+	# 覆盖 system.command.exist 假装没装 curl；若 init 直接 exit，本测试会整体终止。
+	# 缺依赖的文案由 requests 层给（英文），这里只验证包层的契约：不 exit、传 rc=3
 	# （jq 归 ext/json，在模块加载时就探活了，不归 init 管）
 	run bash -c '
 		source dig.sh
@@ -41,7 +42,6 @@ setup() {
 		dig.requests.init || rc=$?
 		echo "rc=$rc"
 	'
-	assert_output --partial "缺少依赖"
 	assert_output --partial "rc=3"
 }
 

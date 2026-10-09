@@ -20,19 +20,14 @@ declare -g _DIG_HTTP_STATUS=""
 # DIG_COOKIE / DIG_AUTH 是源自己设的头（用户在环境变量里提供，dig 不抓浏览器 cookie）。
 # 凭证走请求头而不是 query 串：URL 会进重试/失败日志，放 URL 等于把 key 打进终端与日志。
 #
-# curl/jq 缺失时不让 requests.init 内部 exit（system.command.required 会 exit 1，
-# 那样 dig.http.probe 的「缺依赖」分支永远到不了、doctor 也拿不到那一行），
-# 而是自己先判定并只返回非 0。
+# 缺 curl/jq 时先判断再返回 3（requests.init 本身是 exit 语义，doctor/probe 靠 rc=3 区分「缺依赖」）；
+# 判断通过才调 init，那时它不可能失败。
 # 参数 --no-creds：只带代理，不带 DIG_COOKIE / DIG_AUTH —— 给第三方镜像用（站点凭证不发往无关域名）。
 dig.requests.init() {
 	local no_creds=false
 	[[ ${1:-} == "--no-creds" ]] && no_creds=true
 
-	# jq 的探活归 ext/json（模块加载时即检查），此处只管 curl
-	system.command.exist curl || {
-		log.error "缺少依赖：curl（dig 需要 curl 与 jq）"
-		return 3
-	}
+	requests.available || return 3
 
 	local -a extra=()
 	[[ -n ${DIG_PROXY:-} ]] && extra+=(--proxy "$DIG_PROXY")
@@ -42,6 +37,18 @@ dig.requests.init() {
 	fi
 	# bash 4.3 + set -u 下，空数组直接展开 "${extra[@]}" 会报 unbound：用 + 展开兜住
 	requests.init ${extra[@]+"${extra[@]}"} 2> /dev/null
+}
+
+# 入口依赖检查：缺 jq/curl 就报出来再退。
+# 放 source handler 入口而不是让失败渗透进调用链 —— 链上的失败会被 `$(...)` / `|| return 1`
+# 吞掉，用户只看到空结果或误报（如把解析失败报成「数据不存在」）。
+# doctor 不调它：探活要用 rc=3 把「缺什么」显示在表里。
+dig.require.deps() {
+	json.require
+	requests.curl.available || {
+		log.error "缺少依赖：curl"
+		exit 1
+	}
 }
 
 # 最后一次请求的 HTTP 状态码（调用方用来区分失败类型）
@@ -167,13 +174,18 @@ dig.http.post_json() {
 	dig.http.request POST "$1" "$2" "application/json"
 }
 
-# 通用探活：GET 一个 URL。0=可达 1=被拒 2=网络不通 3=缺 curl/jq；stdout 给一行说明。
+# 通用探活：GET 一个 URL。0=可达 1=被拒 2=网络不通 3=缺 curl；stdout 给一行说明。
 # 供源适配器的 <源>.probe 复用；探活不打日志，避免 doctor 时刷 error。
 dig.http.probe() {
+	json.available || {
+		printf '缺少 jq'
+		return 3
+	}
+
 	local url="$1" host
 	host="$(printf '%s' "$url" | sed -E 's#^https?://([^/]+).*#\1#')"
 	dig.requests.init || {
-		printf '缺少 curl 或 jq'
+		printf '缺少 curl'
 		return 3
 	}
 	# 探活要快：默认 30s 超时下，被污染的域名会让 doctor 逐个卡住

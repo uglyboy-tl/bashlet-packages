@@ -50,7 +50,7 @@ setup() {
 @test "doctor.source: probe rc=3 归为缺前置" {
 	source.register fakemissing "测试" "tier:core" ""
 	fakemissing.probe() {
-		printf '缺少 curl 或 jq'
+		printf '缺少 curl'
 		return 3
 	}
 	run doctor.source fakemissing

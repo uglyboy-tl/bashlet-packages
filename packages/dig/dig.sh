@@ -70,6 +70,7 @@ _dig_source() {
 	args.add_options "ARG" "查询词" "要搜索的关键词"
 	args.process "$@"
 
+	dig.require.deps
 	dig.common.apply "$mod" || exit 1
 
 	# 给了 -u 就直取这一条（URL 形式的校验在 search_url 里，报错更具体），否则走检索；
@@ -119,6 +120,8 @@ cmd_fetch() {
 		dig.fetch.usage
 		return 0
 	fi
+
+	dig.require.deps
 
 	local url="${1:-}"
 	[[ -n $url ]] || {
