@@ -52,8 +52,8 @@ provider_openai_body() {
 		log.warn "openai $MODEL 仅支持 n=1，已从 $count 收敛"
 		count=1
 	fi
-	[[ -n $native_q ]] && extra=$(jq -c --arg q "$native_q" '.quality = $q' <<< "$extra")
-	[[ -n ${STYLE:-} && ${MODEL,,} == *dall-e-3* ]] && extra=$(jq -c --arg s "$STYLE" '.style = $s' <<< "$extra")
+	[[ -n $native_q ]] && extra=$(json.run -c --arg q "$native_q" '.quality = $q' <<< "$extra")
+	[[ -n ${STYLE:-} && ${MODEL,,} == *dall-e-3* ]] && extra=$(json.run -c --arg s "$STYLE" '.style = $s' <<< "$extra")
 	openai_compat.body "$extra" "$sz" "$count"
 }
 

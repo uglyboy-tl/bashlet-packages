@@ -24,7 +24,7 @@ provider_agnes_body() {
 	local extra="" refs
 	if [[ -n ${REF:-} ]]; then
 		refs=$(common.ref_build_array "$REF" '. += [("data:\($mime);base64," + $b64)]') || return 1
-		extra=$(jq -c '{extra_body: {image: (if (. | length) == 1 then .[0] else . end), response_format: "b64_json"}}' <<< "$refs") || return 1
+		extra=$(json.run -c '{extra_body: {image: (if (. | length) == 1 then .[0] else . end), response_format: "b64_json"}}' <<< "$refs") || return 1
 	fi
 	openai_compat.body "$extra"
 }

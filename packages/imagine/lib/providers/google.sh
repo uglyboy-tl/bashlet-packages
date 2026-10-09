@@ -25,13 +25,13 @@ provider_google_body() {
 	local parts body
 	if [[ -n ${REF:-} ]]; then
 		parts=$(common.ref_build_array "$REF" '. += [{inlineData: {mimeType: $mime, data: $b64}}]') || return 1
-		parts=$(jq --arg p "$PROMPT" '. += [{text: $p}]' <<< "$parts") || return 1
-		body=$(jq --arg ar "$ASPECT" --arg is "$IMAGE_SIZE" '{
+		parts=$(json.run --arg p "$PROMPT" '. += [{text: $p}]' <<< "$parts") || return 1
+		body=$(json.run --arg ar "$ASPECT" --arg is "$IMAGE_SIZE" '{
 			contents: [{role: "user", parts: .}],
 			generationConfig: {responseModalities: ["IMAGE"], imageConfig: {aspectRatio: $ar, imageSize: $is}}
 		}' <<< "$parts") || return 1
 	else
-		body=$(jq -n --arg p "$PROMPT" --arg ar "$ASPECT" --arg is "$IMAGE_SIZE" '{
+		body=$(json.run -n --arg p "$PROMPT" --arg ar "$ASPECT" --arg is "$IMAGE_SIZE" '{
 			contents: [{role: "user", parts: [{text: $p}]}],
 			generationConfig: {responseModalities: ["IMAGE"], imageConfig: {aspectRatio: $ar, imageSize: $is}}
 		}') || return 1

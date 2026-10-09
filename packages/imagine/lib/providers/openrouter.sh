@@ -26,7 +26,7 @@ provider_openrouter_body() {
 	local extra refs
 	if [[ -n ${REF:-} ]]; then
 		refs=$(common.ref_build_array "$REF" '. += [{type: "image_url", image_url: {url: ("data:\($mime);base64," + $b64)}}]') || return 1
-		extra=$(jq -c '{output_format: "png", input_references: .}' <<< "$refs") || return 1
+		extra=$(json.run -c '{output_format: "png", input_references: .}' <<< "$refs") || return 1
 	else
 		extra='{"output_format":"png"}'
 	fi

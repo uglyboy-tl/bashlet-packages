@@ -35,7 +35,7 @@ provider_cloudflare_auth() { requests.auth_bearer "$CLOUDFLARE_API_TOKEN"; }
 provider_cloudflare_endpoint() { printf '/client/v4/accounts/%s/ai/run/%s' "$CLOUDFLARE_ACCOUNT_ID" "$1"; }
 
 provider_cloudflare_body() {
-	jq -n --arg p "$PROMPT" '{prompt: $p}'
+	json.run -n --arg p "$PROMPT" '{prompt: $p}'
 }
 
 provider_cloudflare_parse() {

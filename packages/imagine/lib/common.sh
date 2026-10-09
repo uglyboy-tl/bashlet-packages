@@ -42,7 +42,7 @@ common.ref_build_array() {
 		mime=$(common.mime_type "$path") || return 1
 		tmp=$(mktemp) || return 1
 		string.base64.encode "$path" | tr -d '\n' > "$tmp"
-		result=$(jq --rawfile b64 "$tmp" --arg mime "$mime" "$filter" <<< "$result") || {
+		result=$(json.run --rawfile b64 "$tmp" --arg mime "$mime" "$filter" <<< "$result") || {
 			rm -f "$tmp"
 			return 1
 		}
@@ -120,13 +120,13 @@ common.extra_json() {
 			return 1
 		}
 		case "$value" in
-			true | false | null) next=$(jq -c --arg k "$key" --argjson v "$value" 'setpath($k | split("."); $v)' <<< "$json") ;;
-			'') next=$(jq -c --arg k "$key" 'setpath($k | split("."); "")' <<< "$json") ;;
+			true | false | null) next=$(json.run -c --arg k "$key" --argjson v "$value" 'setpath($k | split("."); $v)' <<< "$json") ;;
+			'') next=$(json.run -c --arg k "$key" 'setpath($k | split("."); "")' <<< "$json") ;;
 			*)
 				if [[ $value =~ ^-?[0-9]+$ || $value =~ ^-?[0-9]*\.[0-9]+$ ]]; then
-					next=$(jq -c --arg k "$key" --argjson v "$value" 'setpath($k | split("."); $v)' <<< "$json")
+					next=$(json.run -c --arg k "$key" --argjson v "$value" 'setpath($k | split("."); $v)' <<< "$json")
 				else
-					next=$(jq -c --arg k "$key" --arg v "$value" 'setpath($k | split("."); $v)' <<< "$json")
+					next=$(json.run -c --arg k "$key" --arg v "$value" 'setpath($k | split("."); $v)' <<< "$json")
 				fi
 				;;
 		esac

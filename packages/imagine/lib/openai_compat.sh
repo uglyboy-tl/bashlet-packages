@@ -17,14 +17,14 @@ openai_compat.endpoint() { printf '%s' "$1"; }
 # openai_compat.body [额外字段 JSON] [尺寸覆盖] [数量覆盖]
 openai_compat.body() {
 	local extra="${1:-}" size="${2:-${SIZE:-}}" count="${3:-${COUNT:-1}}" body
-	body=$(jq -n --arg m "$MODEL" --arg p "$PROMPT" --arg s "$size" --argjson n "$count" \
+	body=$(json.run -n --arg m "$MODEL" --arg p "$PROMPT" --arg s "$size" --argjson n "$count" \
 		'{model: $m, prompt: $p, n: $n, size: $s}') || return 1
 	if [[ -n ${SEED:-} ]]; then
-		body=$(jq --argjson seed "$SEED" '.seed = $seed' <<< "$body") || return 1
+		body=$(json.run --argjson seed "$SEED" '.seed = $seed' <<< "$body") || return 1
 	fi
 	if [[ -n $extra ]]; then
 		# extra 可能很大（参考图 base64），必须走 stdin 而不是 --argjson 参数
-		body=$(jq -c --argjson b "$body" '. + $b' <<< "$extra") || return 1
+		body=$(json.run -c --argjson b "$body" '. + $b' <<< "$extra") || return 1
 	fi
 	printf '%s' "$body"
 }

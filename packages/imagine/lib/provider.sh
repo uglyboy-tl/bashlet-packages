@@ -169,10 +169,11 @@ provider.probe() {
 		return 0
 	}
 
-	requests.init 2> /dev/null || {
+	requests.available || {
 		printf 'noruntime\t缺 curl 或 jq'
 		return 0
 	}
+	requests.init 2> /dev/null
 	# 探活要快：默认 120s 超时下，一家被墙的能拖住整个表。IMAGINE_PROBE_TIMEOUT 可覆盖，
 	# 探活是并发跑的所以它只影响最慢的那一家（网络差调大，想快点看到表就调小）。
 	# 非法值回退默认：非数字喂给 requests.timeout 会让子 shell 崩，状态落回 unknown 就分不清原因了。

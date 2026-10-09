@@ -25,6 +25,7 @@ declare -gi IMAGINE_ATTEMPTS=0
 
 compose.init() {
 	local name="$1"
+	requests.available || return 3
 	requests.init
 	requests.timeout "$IMAGINE_TIMEOUT"
 	requests.base_url "$(provider.base_url "$name")"
@@ -92,7 +93,7 @@ compose.build() {
 		return 1
 	}
 	if [[ -n ${EXTRA_JSON:-} ]]; then
-		body="$(jq -c --argjson e "$EXTRA_JSON" '. * $e' <<< "$body")" || return 1
+		body="$(json.run -c --argjson e "$EXTRA_JSON" '. * $e' <<< "$body")" || return 1
 	fi
 	printf '%s' "$body"
 }
@@ -116,7 +117,7 @@ compose._attempt() {
 		[[ $status == 4* && $status != 429 ]] && return 1
 		return 2
 	fi
-	if ! requests.text "$response" | jq . > /dev/null 2>&1; then
+	if ! requests.text "$response" | json.run . > /dev/null 2>&1; then
 		common.fail "响应不是合法 JSON（可能被截断）"
 		return 2
 	fi
@@ -215,11 +216,11 @@ compose.emit_json() {
 		rm -f "$IMAGINE_ERROR_FILE"
 	fi
 	if ((${#IMAGINE_FILES[@]})); then
-		files_json=$(printf '%s\n' "${IMAGINE_FILES[@]}" | jq -R . | jq -s -c .)
+		files_json=$(printf '%s\n' "${IMAGINE_FILES[@]}" | json.run -R . | json.run -s -c .)
 	else
 		files_json='[]'
 	fi
-	base=$(jq -n -c --argjson ok "$ok" --argjson files "$files_json" \
+	base=$(json.run -n -c --argjson ok "$ok" --argjson files "$files_json" \
 		--arg provider "${PROVIDER:-}" --arg model "${MODEL:-}" \
 		--arg requested "${SIZE_REQUESTED:-}" --arg size "${SIZE:-}" --arg aspect "${ASPECT:-}" \
 		--argjson count "$count" --argjson attempts "${IMAGINE_ATTEMPTS:-0}" \
@@ -227,6 +228,6 @@ compose.emit_json() {
 	if ((rc == 0)); then
 		printf '%s\n' "$base"
 	else
-		jq -c --arg e "$err" '. + {error: $e}' <<< "$base" || printf '%s\n' "$base"
+		json.run -c --arg e "$err" '. + {error: $e}' <<< "$base" || printf '%s\n' "$base"
 	fi
 }

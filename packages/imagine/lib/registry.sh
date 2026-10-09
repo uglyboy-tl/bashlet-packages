@@ -171,6 +171,7 @@ registry.fetch() {
 	meta="$(registry.meta)"
 	mkdir -p "${cache%/*}" || return 1
 
+	requests.available || return 3
 	requests.init "-L"
 	if [[ -f $meta ]]; then
 		etag=$(sed -n 's/^etag=//p' "$meta")

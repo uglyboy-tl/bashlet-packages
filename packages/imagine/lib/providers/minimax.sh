@@ -32,16 +32,16 @@ provider_minimax_body() {
 	local w="${SIZE%%x*}" h="${SIZE##*x}" refs body
 	if [[ -n ${REF:-} ]]; then
 		refs=$(common.ref_build_array "$REF" '. += [{type: "character", image_file: ("data:\($mime);base64," + $b64)}]') || return 1
-		body=$(jq --arg m "$MODEL" --arg p "$PROMPT" --argjson n "$COUNT" --argjson w "$w" --argjson h "$h" '{
+		body=$(json.run --arg m "$MODEL" --arg p "$PROMPT" --argjson n "$COUNT" --argjson w "$w" --argjson h "$h" '{
 			model: $m, prompt: $p, n: $n, width: $w, height: $h,
 			response_format: "base64", subject_reference: .
 		}' <<< "$refs") || return 1
 	else
-		body=$(jq -n --arg m "$MODEL" --arg p "$PROMPT" --argjson n "$COUNT" --argjson w "$w" --argjson h "$h" '{
+		body=$(json.run -n --arg m "$MODEL" --arg p "$PROMPT" --argjson n "$COUNT" --argjson w "$w" --argjson h "$h" '{
 			model: $m, prompt: $p, n: $n, width: $w, height: $h
 		}') || return 1
 	fi
-	[[ -n ${SEED:-} ]] && body=$(jq --argjson seed "$SEED" '.seed = $seed' <<< "$body")
+	[[ -n ${SEED:-} ]] && body=$(json.run --argjson seed "$SEED" '.seed = $seed' <<< "$body")
 	printf '%s' "$body"
 }
 

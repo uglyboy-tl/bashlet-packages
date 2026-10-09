@@ -27,20 +27,20 @@ provider_dashscope_body() {
 		[[ -n ${SEED:-} ]] && log.warn "dashscope 参考图模式忽略 --seed"
 		[[ -n ${NEGATIVE:-} ]] && log.warn "dashscope 参考图模式忽略 --negative-prompt"
 		content=$(common.ref_build_array "$REF" '. += [{image: ("data:\($mime);base64," + $b64)}]') || return 1
-		content=$(jq --arg p "$PROMPT" '. += [{text: $p}]' <<< "$content") || return 1
-		body=$(jq --arg m "$MODEL" --arg s "$SIZE" '{
+		content=$(json.run --arg p "$PROMPT" '. += [{text: $p}]' <<< "$content") || return 1
+		body=$(json.run --arg m "$MODEL" --arg s "$SIZE" '{
 			model: $m,
 			input: {messages: [{role: "user", content: .}]},
 			parameters: {size: $s, n: 1, watermark: false}
 		}' <<< "$content") || return 1
 	else
-		body=$(jq -n --arg m "$MODEL" --arg p "$PROMPT" --arg s "$SIZE" --argjson n "$COUNT" '{
+		body=$(json.run -n --arg m "$MODEL" --arg p "$PROMPT" --arg s "$SIZE" --argjson n "$COUNT" '{
 			model: $m,
 			input: {messages: [{role: "user", content: [{text: $p}]}]},
 			parameters: {size: $s, n: $n, prompt_extend: true, watermark: false}
 		}') || return 1
-		[[ -n ${SEED:-} ]] && body=$(jq --argjson seed "$SEED" '.parameters.seed = $seed' <<< "$body")
-		[[ -n ${NEGATIVE:-} ]] && body=$(jq --arg neg "$NEGATIVE" '.parameters.negative_prompt = $neg' <<< "$body")
+		[[ -n ${SEED:-} ]] && body=$(json.run --argjson seed "$SEED" '.parameters.seed = $seed' <<< "$body")
+		[[ -n ${NEGATIVE:-} ]] && body=$(json.run --arg neg "$NEGATIVE" '.parameters.negative_prompt = $neg' <<< "$body")
 	fi
 	printf '%s' "$body"
 }

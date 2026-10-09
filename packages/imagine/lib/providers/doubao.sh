@@ -30,11 +30,11 @@ provider_doubao_body() {
 	fi
 	if [[ -n ${REF:-} ]]; then
 		refs=$(common.ref_build_array "$REF" '. += [("data:\($mime);base64," + $b64)]') || return 1
-		extra=$(jq -c '{response_format: "url", watermark: false, image: (if (. | length) == 1 then .[0] else . end)}' <<< "$refs") || return 1
+		extra=$(json.run -c '{response_format: "url", watermark: false, image: (if (. | length) == 1 then .[0] else . end)}' <<< "$refs") || return 1
 	else
 		extra='{"response_format":"url","watermark":false}'
 	fi
-	[[ -n ${NEGATIVE:-} ]] && extra=$(jq -c --arg neg "$NEGATIVE" '.negative_prompt = $neg' <<< "$extra")
+	[[ -n ${NEGATIVE:-} ]] && extra=$(json.run -c --arg neg "$NEGATIVE" '.negative_prompt = $neg' <<< "$extra")
 	openai_compat.body "$extra" "$sz"
 }
 
