@@ -35,7 +35,7 @@ setup() {
 
 	run bash binup.sh search lf
 	assert_success
-	assert_output --partial "回源失败"
+	assert_output --partial "origin fetch failed"
 	assert_output --partial "lf"
 }
 
@@ -44,7 +44,7 @@ setup() {
 
 	run bash binup.sh search -r lf
 	assert_success
-	assert_output --partial "回源失败"
+	assert_output --partial "origin fetch failed"
 }
 
 @test "registry: 无缓存且回源失败时报错" {
@@ -53,7 +53,7 @@ setup() {
 
 	run bash binup.sh search lf
 	assert_failure
-	assert_output --partial "回源失败"
+	assert_output --partial "origin fetch failed"
 }
 
 @test "registry: 缓存内容缺少 packages 段时视为无效并报错" {

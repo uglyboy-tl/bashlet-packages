@@ -16,7 +16,7 @@ setup() {
 	assert_output --partial "lf"
 	assert_output --partial "已配置"
 	assert_output --partial "终端文件管理器"
-	refute_output --partial "回源失败"
+	refute_output --partial "origin fetch failed"
 }
 
 
