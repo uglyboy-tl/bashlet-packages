@@ -11,7 +11,6 @@
 | `CONTEXT.md` | 领域词汇表 | 均适用 |
 | `docs/` | 跨包规范 + ADR | 维护者 |
 | `packages/<包>/README.md` | 单包用法 | 用户 |
-| `packages/<包>/references/` | skill 执行手册 | skill 运行时 |
 
 ## 项目结构
 
@@ -60,7 +59,7 @@ BashDev/
 
 ## 文档约定
 
-- **包内 `docs/` 只分 `adr/`**（编号单调、写下来就不再改的决策记录），其余设计与资料平铺；`references/` 是随 skill 分发的执行手册——这两处文件名一律小写 kebab（`README.md`/`CONTEXT.md`/`AGENTS.md`/`SKILL.md` 除外），且都不随构建产物分发。理由与被否方案见 [`docs/adr/0001-docs-layout.md`](docs/adr/0001-docs-layout.md)。
+- **包内 `docs/` 只分 `adr/`**（编号单调、写下来就不再改的决策记录），其余设计与资料平铺——这些文件名一律小写 kebab（`README.md`/`CONTEXT.md`/`AGENTS.md`/`SKILL.md` 除外），且都不随构建产物分发。理由与被否方案见 [`docs/adr/0001-docs-layout.md`](docs/adr/0001-docs-layout.md)。
 - **每个包有 `README.md`**（`tools/new` 生成骨架；章节随包而定，惯例用法在前），`archive` 豁免。
 - **校验**：在 `tools/test` 全量时跑（命名 / README 存在 / `docs/` 子目录），失败即非零退出；指定单包时不跑。
 
@@ -78,23 +77,23 @@ BashDev/
 | 领域词汇 | [`CONTEXT.md`](CONTEXT.md) |
 | jq 程序的写法 | 本文件 |
 | 单包用法 | `packages/<包>/README.md` |
-| skill 执行流程 | `packages/<包>/references/` |
+| skill 执行流程 | `packages/<包>/SKILL.md` |
 
 未列入的主题：`packages/<包>/README.md` > 本文件 > `CONTEXT.md`。
 
 ## skill 部署（手动）
 
-`tools/build <包>` 只把脚本写进 `OUTPUT_DIR`；`SKILL.md` 与 `references/` 不随构建分发，要手动拷进 skill 目录。
+`tools/build <包>` 只把脚本写进 `OUTPUT_DIR`；`SKILL.md` 不随构建分发，要手动拷进 skill 目录。
 改完这些文件不会有任何工具提醒，靠这张表对照：
 
 | 包 | skill 目录 | 要同步的文件 |
 | --- | --- | --- |
-| dig | `~/.config/pi/skills/research/` | `SKILL.md`、`references/dig.md`、构建产物 `scripts/dig`、`scripts/.env` |
+| dig | `~/.config/pi/skills/dig/` | `SKILL.md`、构建产物 `scripts/dig`、`scripts/.env` |
 | imagine | `~/.config/pi/skills/image-gen/` | 当前只部署了构建产物 `scripts/imagine` 与 `scripts/.env`，`SKILL.md` 未部署 |
 
 `.env` 含密钥、工具链不碰它：包内那份是源，`<skill>/scripts/.env` 是产物运行时要读的那份，同步时手动拷并去掉只有包内那份有意义的 `OUTPUT_DIR`；本仓库的代理读不到 `.env`（安全网拦截），只能人工做。
 
-对照命令（应无输出）：`diff -q ~/.config/pi/skills/research/SKILL.md packages/dig/SKILL.md`
+对照命令（应无输出）：`diff -q ~/.config/pi/skills/dig/SKILL.md packages/dig/SKILL.md`
 
 ## 编程指南
 

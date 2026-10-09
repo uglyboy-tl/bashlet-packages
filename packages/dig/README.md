@@ -59,14 +59,13 @@ X 要 cookie 是为了**取回 queryId**：它藏在 `x.com/home` 的 main bundl
 
 ## 文档与分发
 
-`docs/` 只是开发资料（**不随 `tools/build` 的产物分发**）；`SKILL.md` 与 `references/dig.md`
-才是随 skill 一起装出去的两份。部署目标由包内 `.env` 的 `OUTPUT_DIR` 决定
+`docs/` 只是开发资料（**不随 `tools/build` 的产物分发**）；随 dig skill 装出去的只有 `SKILL.md`
+与构建产物 `scripts/dig`。部署目标由包内 `.env` 的 `OUTPUT_DIR` 决定
 （`tools/build dig` 会把产物直接写进 skill 的 `scripts/dig`）。
 
 | 文件 | 内容 |
 | --- | --- |
-| `SKILL.md` | research skill 正文（自带 dig：委派 prompt 固定带上 dig 的脚本与参考文件路径，由 researcher 按需使用） |
-| `references/dig.md` | dig 站内检索指南（**随 skill 分发**）：给执行者看的选源/查询词/时间窗口/判读/已知限制 |
+| `SKILL.md` | dig skill 正文（**随 skill 分发**）：选源/查询词/时间窗口/判读/已知限制，执行手册已并入其中 |
 | `docs/design.md` | 定位、CLI 形态、条目 schema、源适配器契约、代理要求、为什么不做跨源融合 |
 | `docs/sources.md` | **接线前必读**：源优先级、端点速查、本机可达性实测、中文站点结论、已知坑 |
 | `docs/candidates.md` | 未接线候选的完整方案（X 的 queryId 刷新算法、Reddit OAuth、Bluesky、招聘板）与否决理由 |

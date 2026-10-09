@@ -228,8 +228,7 @@ parse.xml.records <记录标签> <字段spec>  # XML → TSV；spec: tag / *tag�
 ```
 packages/dig/
 ├── dig.sh              # 入口：参数解析 + 子命令分发
-├── SKILL.md            # research skill 正文（随 skill 分发）
-├── references/dig.md   # dig 取数方法论（随 skill 分发，执行者开工前读）
+├── SKILL.md            # dig skill 正文（随 skill 分发，执行手册已并入）
 ├── lib/
 │   ├── core|std|ext    # bashlet 链接
 │   ├── common.sh       # 网络入口、重试、公共选项解析
@@ -256,7 +255,7 @@ packages/dig/
 网络层统一带重试：传输层失败与 429/5xx 退避重试（`DIG_RETRY`，默认 2 次），其余 4xx 直接报错。
 
 **源分三层权重**（`caps` 里的 `tier:`，机器可读）：`core`（几乎每次调研都该跑）、
-`topic`（只在匹配的话题类型上用）、`niche`（极少用但不可替代）。这个分层写在 `references/dig.md`。
+`topic`（只在匹配的话题类型上用）、`niche`（极少用但不可替代）。这个分层写在 `SKILL.md`。
 这是为了抵抗「源一多就想全跑」的惯性 —— dig 是要给一次具体调研做补充，不是聚合器。
 
 加一个源 = 在 `lib/sources/` 加一个文件（末尾调 `source.register`）+ 在 `lib/sources/index.sh` 加一行 import。

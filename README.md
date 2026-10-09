@@ -9,7 +9,7 @@
 | --- | --- |
 | [`packages/apthist`](packages/apthist/README.md) | 分析 apt/dpkg 日志，列出最近 N 天安装或卸载的软件包 |
 | [`packages/binup`](packages/binup/README.md) | 命令行程序的下载管理器：查 release、下载归档、备份旧版、解压安装 |
-| [`packages/dig`](packages/dig/README.md) | 按站点取数的工具箱，配 research skill 使用 |
+| [`packages/dig`](packages/dig/README.md) | 按站点取数的工具箱，构建产物配 dig skill 使用 |
 | [`packages/imagine`](packages/imagine/README.md) | 命令行文生图 / 图生图，一套参数调用所有 provider |
 | `packages/archive` | 存档包，只保留历史代码，不计入全量测试 |
 
@@ -32,5 +32,5 @@ tools/new my-script           # 新建包骨架
 - [`AGENTS.md`](AGENTS.md)：工作指南（结构、包约定、命令），编码代理的入口；文档约定与权威顺序也在里面。
 - [`CONTEXT.md`](CONTEXT.md)：领域词汇表。
 - `docs/`：跨包规范（[`docs/env-example.md`](docs/env-example.md)）与仓库级决策（`docs/adr/`）。
-- `packages/<包>/README.md`：单个包的用法；`SKILL.md` 与 `references/` 只在装了 skill 后随产物分发。
+- `packages/<包>/README.md`：单个包的用法；`SKILL.md` 只在装了 skill 后随产物分发。
 - [`bashlet/README.md`](bashlet/README.md)：框架 API 与模块分层。
