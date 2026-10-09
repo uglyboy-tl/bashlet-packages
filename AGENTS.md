@@ -76,6 +76,7 @@ BashDev/
 | 模块分层 / import | `bashlet/README.md` |
 | 包结构约定 | 本文件 |
 | 领域词汇 | [`CONTEXT.md`](CONTEXT.md) |
+| jq 程序的写法 | 本文件 |
 | 单包用法 | `packages/<包>/README.md` |
 | skill 执行流程 | `packages/<包>/references/` |
 
@@ -105,6 +106,19 @@ BashDev/
 6. **快速失败（Fail Fast, Fail Loud）** - 无效状态立即报错，不尝试修补；使用 `requests.raise_for_status` 检查错误
 7. **有意义命名（Intentional Naming）** - 名称即文档
 8. **复杂度取舍** - 只处理**能举出真实输入或真实场景**的边界，举不出的靠约定解决；框架（bashlet）收边界、包不收；密钥泄漏与注入、数据丢失（覆盖 / 删除用户文件）、静默失败三类不可豁免。
+
+## jq 程序的写法
+
+- **判据是「提取后函数体能一眼看清控制流」，不是行数阈值**。多行的 jq program 打断在控制流中段时，
+  提成模块顶层的 heredoc 常量 `read -r -d '' _<模块>_<用途>_JQ << 'JQ' || true` … `JQ`，
+  调用点只剩一行 `json.run <选项> "$_常量"`（dig 的 `hn.search_url`、`reddit.comments_text` 即此例）。
+  理由：内联在单引号里时，program 自身含的单引号/反斜杠只能靠 `'\''` 拼接，脆弱且不可读；heredoc 里原样写，
+  也不再需要 `# shellcheck disable=SC2016`。
+- **不提**：单行（哪怕 150+ 字符）—— 提取只是把那一行搬到文件顶部，函数体行数不变，读者反要跳去常量区
+  （`ext/requests` 的响应头解析即此类）；4~5 行的 JSON 字面量同理（本来就分行可读，不打断控制流）。
+- **包内 runner**：包若有「公共 jq 库 + 公共参数（如 `--arg query`）」，给一个包内 runner 收敛
+  （dig 的 `schema.jq` 即此例），而不是在几十个调用点重复拼 `"$LIB"'<program>'`。
+- **bashlet 更保守**：`lib/` 的模块字节被所有消费者背（`test/payload.bats` 有棘轮盯着），同一判据下倾向不提。
 
 ## 构建/检查/测试命令
 
