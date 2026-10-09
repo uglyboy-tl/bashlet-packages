@@ -36,6 +36,11 @@ jobs:
           ARK_API_KEY: ${{ secrets.ARK_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          # 这三个 provider 原先漏了（Cloudflare 占两个变量）—— 即使配了 secret 也传不进 CI，脚本永远跳过
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
+          ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
         run: bash packages/imagine/scripts/update-registry.sh
 
       - name: Open pull request
