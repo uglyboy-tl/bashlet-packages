@@ -12,6 +12,22 @@ import parse
 import schema
 import source
 
+read -r -d '' _ARXIV_MAP_JQ << 'JQ' || true
+    [ split("\n")[] | select(length > 0) | split("\t") ][]
+    | {
+        source: "arxiv",
+        id: .[1],
+        url: (.[1] | sub("^http://"; "https://")),
+        title: .[2],
+        text: .[3],
+        author: .[4],
+        created_at: .[0],
+        engagement: {},
+        tags: [],
+        query: $query
+      }
+JQ
+
 # 该源的默认时间窗口（用户没显式给 -p 时生效）
 arxiv.probe() { dig.http.probe "https://export.arxiv.org/api/query?search_query=all:test&max_results=1"; }
 
@@ -62,20 +78,7 @@ arxiv.search_url() {
 # Atom -> TSV：published / id / title / summary / 全部作者
 arxiv.map() {
 	parse.xml.records entry 'published,id,title,summary,*name' |
-		json.run -R -s -c --arg query "${DIG_QUERY:-}" '
-    [ split("\n")[] | select(length > 0) | split("\t") ][]
-    | {
-        source: "arxiv",
-        id: .[1],
-        url: (.[1] | sub("^http://"; "https://")),
-        title: .[2],
-        text: .[3],
-        author: .[4],
-        created_at: .[0],
-        engagement: {},
-        tags: [],
-        query: $query
-      }'
+		schema.jq -R -s -c "$_ARXIV_MAP_JQ"
 }
 
 source.url.register arxiv arxiv.org

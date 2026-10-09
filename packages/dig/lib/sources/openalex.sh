@@ -11,6 +11,31 @@ import fetch
 import schema
 import source
 
+read -r -d '' _OPENALEX_MAP_JQ << 'JQ' || true
+    # 摘要在 OpenAlex 里是倒排索引，按位置还原成正文
+    def abstract:
+      .abstract_inverted_index as $ix
+      | if $ix == null then ""
+        else [ $ix | to_entries[] as $w | $w.value[] | { p: ., w: $w.key } ]
+             | sort_by(.p) | map(.w) | join(" ")
+        end;
+    .results[]?
+    | {
+        source: "openalex",
+        id: (.id // .doi // ""),
+        url: (.primary_location.landing_page_url // .doi // ""),
+        title: (.display_name // ""),
+        text: (abstract | .[0:1200]),
+        author: ([.authorships[0:3][].author.display_name] | join(", ")),
+        created_at: ((.publication_date // "")
+          | if length == 10 then . + "T00:00:00Z" else . end),
+        engagement: { cited: (.cited_by_count // 0) },
+        tags: ([.primary_location.source.display_name // empty]
+               + [.type_crossref // empty] | map(select(. != null and . != ""))),
+        query: $query
+      }
+JQ
+
 # 学术文献看被引数而非新鲜度：相关度排在前面的往往是老论文，套时间窗口会把结果清空，
 # 所以默认不筛时间（用户可以用 -p 自己收紧）。
 openalex.probe() { dig.http.probe "https://api.openalex.org/works?search=test&per-page=1"; }
@@ -87,29 +112,7 @@ openalex.search_url() {
 }
 
 openalex.map() {
-	json.run -c --arg query "${DIG_QUERY:-}" '
-    # 摘要在 OpenAlex 里是倒排索引，按位置还原成正文
-    def abstract:
-      .abstract_inverted_index as $ix
-      | if $ix == null then ""
-        else [ $ix | to_entries[] as $w | $w.value[] | { p: ., w: $w.key } ]
-             | sort_by(.p) | map(.w) | join(" ")
-        end;
-    .results[]?
-    | {
-        source: "openalex",
-        id: (.id // .doi // ""),
-        url: (.primary_location.landing_page_url // .doi // ""),
-        title: (.display_name // ""),
-        text: (abstract | .[0:1200]),
-        author: ([.authorships[0:3][].author.display_name] | join(", ")),
-        created_at: ((.publication_date // "")
-          | if length == 10 then . + "T00:00:00Z" else . end),
-        engagement: { cited: (.cited_by_count // 0) },
-        tags: ([.primary_location.source.display_name // empty]
-               + [.type_crossref // empty] | map(select(. != null and . != ""))),
-        query: $query
-      }'
+	schema.jq -c "$_OPENALEX_MAP_JQ"
 }
 
 source.url.register openalex openalex.org doi.org

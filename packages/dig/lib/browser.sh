@@ -18,6 +18,21 @@ import std/cache
 import common
 import schema
 
+read -r -d '' _BROWSER_PARSE_JQ << 'JQ' || true
+    def grab($s; $re): if ($s | test($re)) then ($s | capture($re) | .v) else "" end;
+    def clean: gsub("^\"|\"$"; "") | sub("[ ]+$"; "");
+    . as $md
+    | (if ($md | test("(?s)^---\n.*?\n---\n"))
+       then ($md | capture("(?s)^---\n(?<fm>.*?)\n---\n(?<body>.*)$"))
+       else { fm: "", body: $md } end) as $m
+    | {
+        title: (grab($m.fm; "(?m)^title:[ ]*(?<v>.*)$") | clean),
+        author: (grab($m.fm; "(?m)^[ ]+author:[ ]*(?<v>.*)$") | clean),
+        description: (grab($m.fm; "(?m)^[ ]+description:[ ]*(?<v>.*)$") | clean),
+        text: $m.body
+      }
+JQ
+
 _BROWSER_API="https://api.cloudflare.com/client/v4/accounts"
 
 # 免费档限流 REST 6 次/分钟：与其等上游回 429 再靠退避重试，不如本地先排队（时间戳落缓存目录，跨进程生效）。
@@ -145,17 +160,5 @@ browser.page() {
 # 注：jq 的 capture 在**不匹配时返回 empty 而不是报错**，所以不能用 try/catch 兑——
 # 那会让整个对象变成 empty（一条输出都没有）。先 test 再 capture。
 browser.parse() {
-	json.run -R -s -c '
-    def grab($s; $re): if ($s | test($re)) then ($s | capture($re) | .v) else "" end;
-    def clean: gsub("^\"|\"$"; "") | sub("[ ]+$"; "");
-    . as $md
-    | (if ($md | test("(?s)^---\n.*?\n---\n"))
-       then ($md | capture("(?s)^---\n(?<fm>.*?)\n---\n(?<body>.*)$"))
-       else { fm: "", body: $md } end) as $m
-    | {
-        title: (grab($m.fm; "(?m)^title:[ ]*(?<v>.*)$") | clean),
-        author: (grab($m.fm; "(?m)^[ ]+author:[ ]*(?<v>.*)$") | clean),
-        description: (grab($m.fm; "(?m)^[ ]+description:[ ]*(?<v>.*)$") | clean),
-        text: $m.body
-      }'
+	json.run -R -s -c "$_BROWSER_PARSE_JQ"
 }

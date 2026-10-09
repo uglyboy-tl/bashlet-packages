@@ -12,6 +12,23 @@ import common
 import schema
 import source
 
+read -r -d '' _HF_MAP_JQ << 'JQ' || true
+    .[]
+    | {
+        source: "hf",
+        id: .id,
+        url: ("https://huggingface.co/" + $type + "/" + .id),
+        title: .id,
+        text: ([ .pipeline_tag // empty ] | map(select(. != null and . != "")) | join(" ")),
+        author: (.author // (.id | split("/")[0])),
+        # 列表接口里 models 没有 lastModified，退回 createdAt；都是「活跃度」而非严格创建时间
+        created_at: ((.lastModified // .createdAt // "") | to_utc),
+        engagement: { downloads: (.downloads // 0), likes: (.likes // 0) },
+        tags: ((.tags // []) | map(select(. != null and . != "")) | .[0:8]),
+        query: $query
+      }
+JQ
+
 # 模型/数据集是长期资产，相关度靠下载量与点赞而不是新鲜度；默认不筛时间
 # （用户仍可用 -p pastmonth 只看最近新增/改动的）。
 hf.options() {
@@ -90,21 +107,7 @@ hf.search_url() {
 
 hf.map() {
 	local type="${1:-models}"
-	json.run -c --arg query "${DIG_QUERY:-}" --arg type "$type" "$_SCHEMA_JQ_LIB"'
-    .[]
-    | {
-        source: "hf",
-        id: .id,
-        url: ("https://huggingface.co/" + $type + "/" + .id),
-        title: .id,
-        text: ([ .pipeline_tag // empty ] | map(select(. != null and . != "")) | join(" ")),
-        author: (.author // (.id | split("/")[0])),
-        # 列表接口里 models 没有 lastModified，退回 createdAt；都是「活跃度」而非严格创建时间
-        created_at: ((.lastModified // .createdAt // "") | to_utc),
-        engagement: { downloads: (.downloads // 0), likes: (.likes // 0) },
-        tags: ((.tags // []) | map(select(. != null and . != "")) | .[0:8]),
-        query: $query
-      }'
+	schema.jq -c --arg type "$type" "$_HF_MAP_JQ"
 }
 
 source.url.register hf huggingface.co

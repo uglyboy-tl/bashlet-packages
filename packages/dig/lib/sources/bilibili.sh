@@ -14,6 +14,46 @@ import parse
 import schema
 import source
 
+read -r -d '' _BILI_SUBTITLE_JQ << 'JQ' || true
+    (.data.subtitle.subtitles // []) as $t
+    | ( ($t | map(select(.lan == "ai-zh"))[0])
+      // ($t | map(select((.lan // "") | startswith("zh")))[0])
+      // ($t | map(select((.lan // "") | startswith("ai-")))[0])
+      // $t[0] ) | .subtitle_url // empty
+JQ
+
+read -r -d '' _BILI_MAP_JQ << 'JQ' || true
+    def num: if type == "number" then . elif type == "string" then (tonumber? // 0) else 0 end;
+    [ .data.result[]? | select(.result_type == "video") | .data[]? ][]
+    | {
+        source: "bilibili",
+        id: .bvid,
+        url: ("https://www.bilibili.com/video/" + .bvid),
+        title: ((.title // "") | gsub("<[^>]*>"; "")),
+        text: ((.description // "") | gsub("<[^>]*>"; "")),
+        author: (.author // ""),
+        created_at: ((.pubdate // 0) | if . > 0 then todateiso8601 else "" end),
+        engagement: { play: (.play | num), danmaku: (.danmaku | num), comments: (.review | num) },
+        tags: ((((.tag // "") | split(",")) + [ (.typename // "") ]) | map(select(. != ""))),
+        query: $query
+      }
+JQ
+
+read -r -d '' _BILI_MAP_VIEW_JQ << 'JQ' || true
+    { data: { result: [ { result_type: "video", data: [ {
+        bvid: .data.bvid,
+        title: (.data.title // ""),
+        author: (.data.owner.name // ""),
+        pubdate: (.data.pubdate // 0),
+        play: (.data.stat.view // 0),
+        danmaku: (.data.stat.danmaku // 0),
+        review: (.data.stat.reply // 0),
+        tag: "",
+        typename: (.data.tname // ""),
+        description: (.data.desc // "")
+      } ] } ] } }
+JQ
+
 _BILI_API="https://api.bilibili.com"
 # 字幕最长保留多少字符
 _BILI_TEXT_CAP=8000
@@ -77,19 +117,7 @@ bilibili.search() {
 # view 端点的 .data 与搜索结果 item 形状不同；转成 item 后再交给 bilibili.map，
 # 避免为直取另写一套字段映射。
 bilibili.map_view() {
-	json.run -c '
-    { data: { result: [ { result_type: "video", data: [ {
-        bvid: .data.bvid,
-        title: (.data.title // ""),
-        author: (.data.owner.name // ""),
-        pubdate: (.data.pubdate // 0),
-        play: (.data.stat.view // 0),
-        danmaku: (.data.stat.danmaku // 0),
-        review: (.data.stat.reply // 0),
-        tag: "",
-        typename: (.data.tname // ""),
-        description: (.data.desc // "")
-      } ] } ] } }'
+	json.run -c "$_BILI_MAP_VIEW_JQ"
 }
 
 # 用户给视频链接就是想要里面的内容，所以 -u 隐式等于 -t 1 -d 1。
@@ -137,21 +165,7 @@ bilibili.search_url() {
 }
 
 bilibili.map() {
-	json.run -c --arg query "${DIG_QUERY:-}" '
-    def num: if type == "number" then . elif type == "string" then (tonumber? // 0) else 0 end;
-    [ .data.result[]? | select(.result_type == "video") | .data[]? ][]
-    | {
-        source: "bilibili",
-        id: .bvid,
-        url: ("https://www.bilibili.com/video/" + .bvid),
-        title: ((.title // "") | gsub("<[^>]*>"; "")),
-        text: ((.description // "") | gsub("<[^>]*>"; "")),
-        author: (.author // ""),
-        created_at: ((.pubdate // 0) | if . > 0 then todateiso8601 else "" end),
-        engagement: { play: (.play | num), danmaku: (.danmaku | num), comments: (.review | num) },
-        tags: ((((.tag // "") | split(",")) + [ (.typename // "") ]) | map(select(. != ""))),
-        query: $query
-      }'
+	schema.jq -c "$_BILI_MAP_JQ"
 }
 
 # 搜索响应里没有 cid，字幕和弹幕都要先用 view 换 cid；两个标志同时给时只查一次 view
@@ -197,12 +211,7 @@ bilibili.enrich_one() {
 bilibili.subtitle() {
 	local bvid="$1" cid="$2" player url raw
 	player="$(dig.http.get "$_BILI_API/x/player/v2" "bvid=$bvid" "cid=$cid")" || return 0
-	url="$(printf '%s' "$player" | json.run -r '
-    (.data.subtitle.subtitles // []) as $t
-    | ( ($t | map(select(.lan == "ai-zh"))[0])
-      // ($t | map(select((.lan // "") | startswith("zh")))[0])
-      // ($t | map(select((.lan // "") | startswith("ai-")))[0])
-      // $t[0] ) | .subtitle_url // empty')"
+	url="$(printf '%s' "$player" | json.run -r "$_BILI_SUBTITLE_JQ")"
 	[[ -n $url ]] || return 0
 	[[ $url == //* ]] && url="https:$url"
 

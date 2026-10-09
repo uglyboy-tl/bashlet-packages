@@ -17,6 +17,26 @@ import parse
 import schema
 import source
 
+read -r -d '' _YT_MAP_JQ << 'JQ' || true
+    [ .. | objects | select(has("videoRenderer")) | .videoRenderer ][]
+    | {
+        source: "youtube",
+        id: .videoId,
+        url: ("https://www.youtube.com/watch?v=" + .videoId),
+        title: (.title.runs[0].text // .title.simpleText // ""),
+        text: "",
+        author: (.ownerText.runs[0].text // ""),
+        created_at: "",
+        engagement: {
+          views: (((.viewCountText.simpleText // "") | gsub("[^0-9]"; "")) as $v | if $v == "" then 0 else ($v | tonumber) end),
+          duration: (.lengthText.simpleText // ""),
+          age: (.publishedTimeText.simpleText // "")
+        },
+        tags: [],
+        query: $query
+      }
+JQ
+
 _YT_API="https://www.youtube.com/youtubei/v1"
 # YouTube Web 端公开的客户端 key（非账号凭证，所有前端都在用）。可用 DIG_YT_KEY 覆盖，
 # 官方轮换时不必改代码。
@@ -49,24 +69,7 @@ youtube.search() {
 }
 
 youtube.map() {
-	json.run -c --arg query "${DIG_QUERY:-}" '
-    [ .. | objects | select(has("videoRenderer")) | .videoRenderer ][]
-    | {
-        source: "youtube",
-        id: .videoId,
-        url: ("https://www.youtube.com/watch?v=" + .videoId),
-        title: (.title.runs[0].text // .title.simpleText // ""),
-        text: "",
-        author: (.ownerText.runs[0].text // ""),
-        created_at: "",
-        engagement: {
-          views: (((.viewCountText.simpleText // "") | gsub("[^0-9]"; "")) as $v | if $v == "" then 0 else ($v | tonumber) end),
-          duration: (.lengthText.simpleText // ""),
-          age: (.publishedTimeText.simpleText // "")
-        },
-        tags: [],
-        query: $query
-      }'
+	schema.jq -c "$_YT_MAP_JQ"
 }
 
 youtube.enrich_one() {
@@ -80,7 +83,7 @@ youtube.enrich_one() {
 		printf '%s' "$line"
 		return 0
 	fi
-	date="$(printf '%s' "$player" | json.run -r "$_SCHEMA_JQ_LIB"'
+	date="$(printf '%s' "$player" | schema.jq -r '
     .microformat.playerMicroformatRenderer.publishDate // "" | to_utc')"
 	desc="$(printf '%s' "$player" | json.run -r --argjson cap "$_YT_TEXT_CAP" '
     (.videoDetails.shortDescription // "") | if length > $cap then .[0:$cap] else . end')"

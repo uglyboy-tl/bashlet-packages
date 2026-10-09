@@ -12,6 +12,45 @@ import fetch
 import schema
 import source
 
+read -r -d '' _DISCOURSE_MAP_JQ << 'JQ' || true
+    (.posts // []) as $posts
+    | (.topics // [])[]
+    | . as $t
+    | ($posts | map(select(.topic_id == $t.id)) | first) as $p
+    | {
+        source: "discourse",
+        id: ($host + "#" + ($t.id | tostring)),
+        url: ("https://" + $host + "/t/" + ($t.slug // "topic") + "/" + ($t.id | tostring)),
+        title: ($t.title // ""),
+        text: ($p.blurb // "" | html_text),
+        author: ($p.username // ""),
+        created_at: (($p.created_at // $t.created_at // "") | to_utc),
+        engagement: ({ replies: ($t.reply_count // 0) }
+          + (if ($t.views // null) != null then { views: $t.views } else {} end)
+          + (if ($t.like_count // null) != null then { likes: $t.like_count } else {} end)),
+        tags: ([ $host ] + ($t.tags // []) | map(select(. != null and . != ""))),
+        query: $query
+      }
+JQ
+
+read -r -d '' _DISCOURSE_TOPIC_JQ << 'JQ' || true
+    {
+      source: "discourse",
+      id: ($host + "#" + (.id | tostring)),
+      url: ("https://" + $host + "/t/" + (.slug // "topic") + "/" + (.id | tostring)),
+      title: (.title // ""),
+      text: ((.post_stream.posts[0].cooked // "") | html_text),
+      author: (.post_stream.posts[0].username // ""),
+      created_at: ((.details.created_at // .created_at // "") | to_utc),
+      engagement: ({ replies: ((.posts_count // 0) | if . > 0 then . - 1 else 0 end) }
+        + (if (.views // null) != null then { views: .views } else {} end)),
+      tags: ([ $host ]
+        + [(.tags // [])[]? | if type == "object" then (.name // "") else (. | tostring) end]
+        | map(select(. != null and . != ""))),
+      query: $query
+    }
+JQ
+
 # 论坛有很长的尾巴，且 Discourse 的 /search.json 无法按时间排序（order 参数无效），
 # 所以默认窗口放成一年，否则默认的 pastmonth 会把结果清空。
 discourse.options() {
@@ -80,22 +119,7 @@ discourse.search() {
 # 创建时间 / 浏览量 / 楼层数；cooked 是 HTML，去标签后进 text。
 discourse.map_topic() {
 	local host="${1:-}"
-	json.run -c --arg query "${DIG_QUERY:-}" --arg host "$host" "$_SCHEMA_JQ_LIB"'
-    {
-      source: "discourse",
-      id: ($host + "#" + (.id | tostring)),
-      url: ("https://" + $host + "/t/" + (.slug // "topic") + "/" + (.id | tostring)),
-      title: (.title // ""),
-      text: ((.post_stream.posts[0].cooked // "") | html_text),
-      author: (.post_stream.posts[0].username // ""),
-      created_at: ((.details.created_at // .created_at // "") | to_utc),
-      engagement: ({ replies: ((.posts_count // 0) | if . > 0 then . - 1 else 0 end) }
-        + (if (.views // null) != null then { views: .views } else {} end)),
-      tags: ([ $host ]
-        + [(.tags // [])[]? | if type == "object" then (.name // "") else (. | tostring) end]
-        | map(select(. != null and . != ""))),
-      query: $query
-    }'
+	schema.jq -c --arg host "$host" "$_DISCOURSE_TOPIC_JQ"
 }
 
 discourse.search_url() {
@@ -113,25 +137,7 @@ discourse.search_url() {
 # 用 topic_id 把两者接起来，取该主题第一条帖子的摘要。
 discourse.map() {
 	local host="${1:-}"
-	json.run -c --arg query "${DIG_QUERY:-}" --arg host "$host" "$_SCHEMA_JQ_LIB"'
-    (.posts // []) as $posts
-    | (.topics // [])[]
-    | . as $t
-    | ($posts | map(select(.topic_id == $t.id)) | first) as $p
-    | {
-        source: "discourse",
-        id: ($host + "#" + ($t.id | tostring)),
-        url: ("https://" + $host + "/t/" + ($t.slug // "topic") + "/" + ($t.id | tostring)),
-        title: ($t.title // ""),
-        text: ($p.blurb // "" | html_text),
-        author: ($p.username // ""),
-        created_at: (($p.created_at // $t.created_at // "") | to_utc),
-        engagement: ({ replies: ($t.reply_count // 0) }
-          + (if ($t.views // null) != null then { views: $t.views } else {} end)
-          + (if ($t.like_count // null) != null then { likes: $t.like_count } else {} end)),
-        tags: ([ $host ] + ($t.tags // []) | map(select(. != null and . != ""))),
-        query: $query
-      }'
+	schema.jq -c --arg host "$host" "$_DISCOURSE_MAP_JQ"
 }
 
 # 认领哪些实例由 DIG_DISCOURSE_SITES 决定，所以用函数动态给清单

@@ -10,7 +10,7 @@ import std/string
 import parse
 
 # 公共 jq 函数 = parse 的文本原语（to_utc / html_text / XML 取值）+ 本模块的 norm_url。
-# 源适配器统一用 "$_SCHEMA_JQ_LIB"'<program>' 拼程序，所以两边的函数都能用。
+# 源适配器统一走 schema.jq 跑程序，所以两边的函数都能用。
 read -r -d '' _SCHEMA_JQ_NORM_URL << 'JQ' || true
 def norm_url:
   if (. // "") == "" then ""
@@ -32,6 +32,23 @@ def norm_url:
 JQ
 
 _SCHEMA_JQ_LIB="$_PARSE_JQ_LIB$_SCHEMA_JQ_NORM_URL"
+
+# 源适配器跑 jq 的统一入口：自动注入公共库（文本原语 + norm_url）与 $query。
+# 用法：schema.jq [jq 选项...] <program>      —— program 必须是最后一个参数，且至少传一个
+#
+# 没有它时，源适配器里十余处都在重复
+#   json.run -c --arg query "${DIG_QUERY:-}" "$_SCHEMA_JQ_LIB"'<program>'
+# 公共库与公共参数的变化只应改这里。program 要用源私有库（如 $_X_JQ_LIB）时，
+# 把它拼在 program 前面即可 —— 整个 program 就是最后一个参数。
+schema.jq() {
+	# 零参时 ${!#} 会展开成 ${!0}（脚本名），拿去当 program 只会报出与调用点无关的 jq 语法错
+	(($#)) || {
+		log.error "schema.jq 需要至少一个 program 参数"
+		return 1
+	}
+	local prog="${!#}" opts=("${@:1:$#-1}")
+	json.run ${opts[@]+"${opts[@]}"} --arg query "${DIG_QUERY:-}" "$_SCHEMA_JQ_LIB$prog"
+}
 
 # 必填字段的唯一定义处。pipe 与校验共用这一个 def（以前两份 jq 程序各写一遍，会漂移）。
 read -r -d '' _SCHEMA_JQ_REQUIRED << 'JQ' || true

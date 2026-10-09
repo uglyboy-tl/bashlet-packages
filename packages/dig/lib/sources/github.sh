@@ -14,6 +14,118 @@ import common
 import schema
 import source
 
+read -r -d '' _GITHUB_DISCUSSIONS_JQ << 'JQ' || true
+    (.data.search.nodes // [])[]
+    | select(.number != null)
+    | {
+        source: "github",
+        id: ((.repository.nameWithOwner // "?") + "#" + (.number | tostring)),
+        url: .url,
+        title: .title,
+        text: (.body // ""),
+        author: (.author.login // ""),
+        created_at: (.createdAt // ""),
+        engagement: { comments: (.comments.totalCount // 0), upvotes: (.upvoteCount // 0) },
+        tags: ([ "discussion", (.category.name // ""),
+                 (if .answer.isAnswer == true then "answered" else "" end) ]
+               | map(select(. != null and . != ""))),
+        query: $query
+      }
+JQ
+
+read -r -d '' _GITHUB_CODE_JQ << 'JQ' || true
+    .[]
+    | {
+        source: "github",
+        id: .url,
+        url: .url,
+        title: ((.repository.nameWithOwner // "?") + ": " + .path),
+        text: "",
+        author: ((.repository.nameWithOwner // "/") | split("/")[0]),
+        created_at: "",
+        engagement: {},
+        tags: ["code"],
+        query: $query
+      }
+JQ
+
+read -r -d '' _GITHUB_MAP_REPOS_JQ << 'JQ' || true
+    .[]
+    | {
+        source: "github",
+        id: .fullName,
+        url: .url,
+        title: .fullName,
+        text: (.description // ""),
+        author: (.fullName | split("/")[0]),
+        # 项目是长期存在的：时间轴取「最后更新」而不是「创建」，这样 -p 筛的是还在维护的项目
+        created_at: (.updatedAt // .createdAt // ""),
+        engagement: { stars: (.stargazersCount // 0), forks: (.forksCount // 0) },
+        tags: ((.language // "") | tostring | if . == "" then [] else [ . ] end),
+        query: $query
+      }
+JQ
+
+read -r -d '' _GITHUB_MAP_ISSUES_JQ << 'JQ' || true
+    .[]
+    | {
+        source: "github",
+        id: ((.repository.nameWithOwner // "?") + "#" + (.number | tostring)),
+        url: .url,
+        title: .title,
+        text: (.body // ""),
+        author: (.author.login // ""),
+        created_at: (.createdAt // ""),
+        engagement: { comments: (.commentsCount // 0) },
+        tags: ([ .state, (if .isPullRequest then "pr" else "issue" end) ] | map(select(. != null and . != ""))),
+        query: $query
+      }
+JQ
+
+read -r -d '' _GITHUB_URL_REPO_JQ << 'JQ' || true
+            [ {
+              fullName: .full_name,
+              url: .html_url,
+              description: (.description // ""),
+              stargazersCount: (.stargazers_count // 0),
+              forksCount: (.forks_count // 0),
+              createdAt: (.created_at // ""),
+              updatedAt: (.updated_at // ""),
+              language: (.language // "")
+            } ]
+JQ
+
+read -r -d '' _GITHUB_URL_ISSUE_JQ << 'JQ' || true
+            [ {
+              repository: { nameWithOwner: $repo },
+              number: .number,
+              url: .html_url,
+              title: .title,
+              body: (.body // ""),
+              author: { login: (.user.login // "") },
+              createdAt: (.created_at // ""),
+              commentsCount: (.comments // 0),
+              state: (.state // ""),
+              isPullRequest: (.pull_request != null)
+            } ]
+JQ
+
+read -r -d '' _GITHUB_COMMITS_JQ << 'JQ' || true
+    .[]
+    | {
+        source: "github",
+        id: .sha,
+        url: .url,
+        title: ((.commit.message // "") | split("\n")[0]),
+        text: (.commit.message // ""),
+        author: (.commit.author.name // ""),
+        created_at: ((.commit.author.date // "") | to_utc),
+        engagement: { comments: (.commit.comment_count // 0) },
+        tags: ["commit"],
+        query: $query
+      }
+JQ
+
 github.options() {
 	args.add_options "type" "T" "搜索类型 issues|repos|code|commits|discussions，默认 issues（repos 的时间轴是最后更新）" "STRING"
 }
@@ -90,32 +202,10 @@ github.search_url() {
 
 	if [[ $kind == issue ]]; then
 		body="$(gh api "repos/$o/$r/issues/$n")" || return 1
-		printf '%s' "$body" | json.run -c --arg repo "$o/$r" '
-            [ {
-              repository: { nameWithOwner: $repo },
-              number: .number,
-              url: .html_url,
-              title: .title,
-              body: (.body // ""),
-              author: { login: (.user.login // "") },
-              createdAt: (.created_at // ""),
-              commentsCount: (.comments // 0),
-              state: (.state // ""),
-              isPullRequest: (.pull_request != null)
-            } ]' | github.map_issues | schema.pipe 0 | schema.limit 1
+		printf '%s' "$body" | json.run -c --arg repo "$o/$r" "$_GITHUB_URL_ISSUE_JQ" | github.map_issues | schema.pipe 0 | schema.limit 1
 	else
 		body="$(gh api "repos/$o/$r")" || return 1
-		printf '%s' "$body" | json.run -c '
-            [ {
-              fullName: .full_name,
-              url: .html_url,
-              description: (.description // ""),
-              stargazersCount: (.stargazers_count // 0),
-              forksCount: (.forks_count // 0),
-              createdAt: (.created_at // ""),
-              updatedAt: (.updated_at // ""),
-              language: (.language // "")
-            } ]' | github.map_repos | schema.pipe 0 | schema.limit 1
+		printf '%s' "$body" | json.run -c "$_GITHUB_URL_REPO_JQ" | github.map_repos | schema.pipe 0 | schema.limit 1
 	fi
 }
 
@@ -169,93 +259,24 @@ github.search_discussions() {
 }
 
 github.map_issues() {
-	json.run -c --arg query "${DIG_QUERY:-}" '
-    .[]
-    | {
-        source: "github",
-        id: ((.repository.nameWithOwner // "?") + "#" + (.number | tostring)),
-        url: .url,
-        title: .title,
-        text: (.body // ""),
-        author: (.author.login // ""),
-        created_at: (.createdAt // ""),
-        engagement: { comments: (.commentsCount // 0) },
-        tags: ([ .state, (if .isPullRequest then "pr" else "issue" end) ] | map(select(. != null and . != ""))),
-        query: $query
-      }'
+	schema.jq -c "$_GITHUB_MAP_ISSUES_JQ"
 }
 
 github.map_repos() {
-	json.run -c --arg query "${DIG_QUERY:-}" '
-    .[]
-    | {
-        source: "github",
-        id: .fullName,
-        url: .url,
-        title: .fullName,
-        text: (.description // ""),
-        author: (.fullName | split("/")[0]),
-        # 项目是长期存在的：时间轴取「最后更新」而不是「创建」，这样 -p 筛的是还在维护的项目
-        created_at: (.updatedAt // .createdAt // ""),
-        engagement: { stars: (.stargazersCount // 0), forks: (.forksCount // 0) },
-        tags: ((.language // "") | tostring | if . == "" then [] else [ . ] end),
-        query: $query
-      }'
+	schema.jq -c "$_GITHUB_MAP_REPOS_JQ"
 }
 
 github.map_code() {
-	json.run -c --arg query "${DIG_QUERY:-}" '
-    .[]
-    | {
-        source: "github",
-        id: .url,
-        url: .url,
-        title: ((.repository.nameWithOwner // "?") + ": " + .path),
-        text: "",
-        author: ((.repository.nameWithOwner // "/") | split("/")[0]),
-        created_at: "",
-        engagement: {},
-        tags: ["code"],
-        query: $query
-      }'
+	schema.jq -c "$_GITHUB_CODE_JQ"
 }
 
 # 提交时间带时区偏移（如 +08:00），统一转 UTC
 github.map_commits() {
-	json.run -c --arg query "${DIG_QUERY:-}" "$_SCHEMA_JQ_LIB"'
-    .[]
-    | {
-        source: "github",
-        id: .sha,
-        url: .url,
-        title: ((.commit.message // "") | split("\n")[0]),
-        text: (.commit.message // ""),
-        author: (.commit.author.name // ""),
-        created_at: ((.commit.author.date // "") | to_utc),
-        engagement: { comments: (.commit.comment_count // 0) },
-        tags: ["commit"],
-        query: $query
-      }'
+	schema.jq -c "$_GITHUB_COMMITS_JQ"
 }
 
 github.map_discussions() {
-	json.run -c --arg query "${DIG_QUERY:-}" '
-    (.data.search.nodes // [])[]
-    | select(.number != null)
-    | {
-        source: "github",
-        id: ((.repository.nameWithOwner // "?") + "#" + (.number | tostring)),
-        url: .url,
-        title: .title,
-        text: (.body // ""),
-        author: (.author.login // ""),
-        created_at: (.createdAt // ""),
-        engagement: { comments: (.comments.totalCount // 0), upvotes: (.upvoteCount // 0) },
-        tags: ([ "discussion", (.category.name // ""),
-                 (if .answer.isAnswer == true then "answered" else "" end) ]
-               | map(select(. != null and . != ""))),
-        query: $query
-      }'
+	schema.jq -c "$_GITHUB_DISCUSSIONS_JQ"
 }
 
 source.url.register github github.com

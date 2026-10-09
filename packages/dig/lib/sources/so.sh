@@ -13,6 +13,34 @@ import common
 import schema
 import source
 
+read -r -d '' _SO_ANSWERS_JQ << 'JQ' || true
+    . as $item
+    | ([ $ans[] | select(.question_id == ($item.id | tonumber)) ]
+       | sort_by([(if .is_accepted then 0 else 1 end), -.score])
+       | .[0:2]
+       | map("--- 回答（\(.score) 分\(if .is_accepted then "，已采纳" else "" end)）---\n"
+             + (.body | html_text))) as $parts
+    | if ($parts | length) == 0 then $item
+      else $item | .text = (((.text // "") + "\n\n" + ($parts | join("\n\n"))) | .[0:$cap])
+      end
+JQ
+
+read -r -d '' _SO_MAP_JQ << 'JQ' || true
+    (.items // [])[]
+    | {
+        source: "so",
+        id: (.question_id | tostring),
+        url: .link,
+        title: .title,
+        text: ((.body // "") | html_text),
+        author: (.owner.display_name // ""),
+        created_at: ((.creation_date // 0) | if . > 0 then todateiso8601 else "" end),
+        engagement: { score: (.score // 0), answers: (.answer_count // 0), views: (.view_count // 0) },
+        tags: ((.tags // []) + [ $site ] | unique),
+        query: $query
+      }
+JQ
+
 _SO_TEXT_CAP=4000
 
 so.options() {
@@ -79,20 +107,7 @@ so.search_url() {
 
 so.map() {
 	local site="${1:-stackoverflow}"
-	json.run -c --arg query "${DIG_QUERY:-}" --arg site "$site" "$_SCHEMA_JQ_LIB"'
-    (.items // [])[]
-    | {
-        source: "so",
-        id: (.question_id | tostring),
-        url: .link,
-        title: .title,
-        text: ((.body // "") | html_text),
-        author: (.owner.display_name // ""),
-        created_at: ((.creation_date // 0) | if . > 0 then todateiso8601 else "" end),
-        engagement: { score: (.score // 0), answers: (.answer_count // 0), views: (.view_count // 0) },
-        tags: ((.tags // []) + [ $site ] | unique),
-        query: $query
-      }'
+	schema.jq -c --arg site "$site" "$_SO_MAP_JQ"
 }
 
 # 先读完 JSONL 拿到前 N 个 id，再一次请求把它们的回答取回来
@@ -123,17 +138,8 @@ so.answers() {
 		answers_json="$(printf '%s' "$answers" | json.run -c '.items // []')"
 	fi
 
-	printf '%s\n' "${lines[@]}" | json.run -c \
-		--argjson ans "$answers_json" --argjson cap "$_SO_TEXT_CAP" "$_SCHEMA_JQ_LIB"'
-    . as $item
-    | ([ $ans[] | select(.question_id == ($item.id | tonumber)) ]
-       | sort_by([(if .is_accepted then 0 else 1 end), -.score])
-       | .[0:2]
-       | map("--- 回答（\(.score) 分\(if .is_accepted then "，已采纳" else "" end)）---\n"
-             + (.body | html_text))) as $parts
-    | if ($parts | length) == 0 then $item
-      else $item | .text = (((.text // "") + "\n\n" + ($parts | join("\n\n"))) | .[0:$cap])
-      end'
+	printf '%s\n' "${lines[@]}" | schema.jq -c \
+		--argjson ans "$answers_json" --argjson cap "$_SO_TEXT_CAP" "$_SO_ANSWERS_JQ"
 }
 
 source.url.register so stackoverflow.com

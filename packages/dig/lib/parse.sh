@@ -24,6 +24,20 @@
 import core/log
 import ext/json
 
+read -r -d '' _PARSE_XML_RECORDS_JQ << 'JQ' || true
+    ($spec | split(",")) as $fields
+    | [ match("(?s)<" + $tag + "(?<attrs>[^>]*)>(?<body>.*?)</" + $tag + ">"; "g") ]
+    | .[]
+    | { attrs: .captures[0].string, body: .captures[1].string } as $rec
+    | [ $fields[] as $f
+        | if ($f | startswith("#")) then ($rec.body | xml_flat)
+          elif ($f | startswith("@")) then xml_attr($rec.attrs; $f[1:])
+          elif ($f | startswith("*")) then xml_many($rec.body; $f[1:])
+          else xml_one($rec.body; $f)
+          end ]
+    | @tsv
+JQ
+
 # 给 jq 程序用的文本原语。schema.sh 会把它接在自己的 norm_url 前面，组成 _SCHEMA_JQ_LIB。
 read -r -d '' _PARSE_JQ_LIB << 'JQ' || true
 # 带时区偏移的 RFC3339 -> UTC Z（YouTube 的 publishDate 是 -07:00 这种）
@@ -153,16 +167,5 @@ parse.xml.records() {
 		return 1
 	}
 
-	json.run -R -s -r --arg tag "$tag" --arg spec "$fields" "$_PARSE_JQ_LIB"'
-    ($spec | split(",")) as $fields
-    | [ match("(?s)<" + $tag + "(?<attrs>[^>]*)>(?<body>.*?)</" + $tag + ">"; "g") ]
-    | .[]
-    | { attrs: .captures[0].string, body: .captures[1].string } as $rec
-    | [ $fields[] as $f
-        | if ($f | startswith("#")) then ($rec.body | xml_flat)
-          elif ($f | startswith("@")) then xml_attr($rec.attrs; $f[1:])
-          elif ($f | startswith("*")) then xml_many($rec.body; $f[1:])
-          else xml_one($rec.body; $f)
-          end ]
-    | @tsv'
+	json.run -R -s -r --arg tag "$tag" --arg spec "$fields" "$_PARSE_JQ_LIB$_PARSE_XML_RECORDS_JQ"
 }

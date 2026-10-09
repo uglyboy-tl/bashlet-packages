@@ -21,6 +21,21 @@ import common
 import schema
 import source
 
+read -r -d '' _FETCH_FALLBACK_JQ << 'JQ' || true
+    {
+        source: "browser",
+        id: $url,
+        url: $url,
+        title: (.title // ""),
+        text: (.text // ""),
+        author: (.author // ""),
+        created_at: "",
+        engagement: {},
+        tags: [],
+        query: ""
+      }
+JQ
+
 # URL → 小写 host：去掉 scheme / userinfo / 端口。没有 scheme 的裸域名也接受（粘贴常见）
 fetch.host() {
 	local h="${1#*://}"
@@ -81,19 +96,7 @@ fetch.fallback.enabled() {
 
 fetch.fallback.item() {
 	local url="$1"
-	browser.page "$url" | json.run -c --arg url "$url" '
-    {
-        source: "browser",
-        id: $url,
-        url: $url,
-        title: (.title // ""),
-        text: (.text // ""),
-        author: (.author // ""),
-        created_at: "",
-        engagement: {},
-        tags: [],
-        query: ""
-      }'
+	browser.page "$url" | json.run -c --arg url "$url" "$_FETCH_FALLBACK_JQ"
 }
 
 # 与源一样过结果缓存：同一个 URL 重复取不打第二次云端浏览器（免费档 6 次/分钟）

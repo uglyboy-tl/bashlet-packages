@@ -10,6 +10,51 @@ import common
 import schema
 import source
 
+read -r -d '' _ZHIHU_HOT_JQ << 'JQ' || true
+    (.Data.Items // [])[]
+    | {
+        source: "zhihu",
+        id: ((.Url // "") | if . == "" then (.Title // "?") else . end),
+        url: (.Url // ""),
+        title: (.Title // ""),
+        text: (.Summary // ""),
+        author: "",
+        created_at: "",
+        engagement: {},
+        tags: ["hot"],
+        query: $query
+      }
+JQ
+
+read -r -d '' _ZHIHU_MAP_JQ << 'JQ' || true
+    (.Data.Items // [])[]
+    | {
+        source: "zhihu",
+        id: ((.Url // "") | if . == "" then (.Title // "?") else . end),
+        url: (.Url // ""),
+        title: (.Title // ""),
+        text: (.ContentText // ""),
+        author: (.AuthorName // ""),
+        created_at: ((.EditTime // 0) | if . > 0 then todateiso8601 else "" end),
+        engagement: { votes: (.VoteUpCount // 0), comments: (.CommentCount // 0) },
+        tags: ([.ContentType] | map(select(. != null and . != ""))),
+        query: $query
+      }
+JQ
+
+read -r -d '' _ZHIHU_CHECK_JQ << 'JQ' || true
+    def hint($c):
+      if $c == 10001 then "（参数错误）"
+      elif $c == 20001 then "（token 无效或过期，去 developer.zhihu.com/personal 重新生成）"
+      elif $c == 30001 then "（触发频率限制，稍后重试）"
+      elif $c == 30002 then "（当日配额用尽）"
+      elif $c == 30003 then "（风控拦截）"
+      else "" end;
+    if (.Code // 0) != 0 then
+      error("知乎错误 \(.Code)\(hint(.Code))：\(.Message // "未知错误")")
+    else . end
+JQ
+
 zhihu.probe() {
 	if ! zhihu.credential > /dev/null 2>&1; then
 		printf '设置 ZHIHU_ACCESS_SECRET（写进包内 .env）'
@@ -55,17 +100,7 @@ zhihu.fetch() {
 }
 
 zhihu.check() {
-	json.run -c '
-    def hint($c):
-      if $c == 10001 then "（参数错误）"
-      elif $c == 20001 then "（token 无效或过期，去 developer.zhihu.com/personal 重新生成）"
-      elif $c == 30001 then "（触发频率限制，稍后重试）"
-      elif $c == 30002 then "（当日配额用尽）"
-      elif $c == 30003 then "（风控拦截）"
-      else "" end;
-    if (.Code // 0) != 0 then
-      error("知乎错误 \(.Code)\(hint(.Code))：\(.Message // "未知错误")")
-    else . end'
+	json.run -c "$_ZHIHU_CHECK_JQ"
 }
 
 zhihu.search() {
@@ -93,37 +128,11 @@ zhihu.search() {
 }
 
 zhihu.map() {
-	json.run -c --arg query "${DIG_QUERY:-}" '
-    (.Data.Items // [])[]
-    | {
-        source: "zhihu",
-        id: ((.Url // "") | if . == "" then (.Title // "?") else . end),
-        url: (.Url // ""),
-        title: (.Title // ""),
-        text: (.ContentText // ""),
-        author: (.AuthorName // ""),
-        created_at: ((.EditTime // 0) | if . > 0 then todateiso8601 else "" end),
-        engagement: { votes: (.VoteUpCount // 0), comments: (.CommentCount // 0) },
-        tags: ([.ContentType] | map(select(. != null and . != ""))),
-        query: $query
-      }'
+	schema.jq -c "$_ZHIHU_MAP_JQ"
 }
 
 zhihu.hot.map() {
-	json.run -c --arg query "${DIG_QUERY:-}" '
-    (.Data.Items // [])[]
-    | {
-        source: "zhihu",
-        id: ((.Url // "") | if . == "" then (.Title // "?") else . end),
-        url: (.Url // ""),
-        title: (.Title // ""),
-        text: (.Summary // ""),
-        author: "",
-        created_at: "",
-        engagement: {},
-        tags: ["hot"],
-        query: $query
-      }'
+	schema.jq -c "$_ZHIHU_HOT_JQ"
 }
 
 source.register zhihu "知乎搜索 / 热榜" "tier:topic period:yes proxy:no key:required"

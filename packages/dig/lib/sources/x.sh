@@ -35,6 +35,80 @@ import common
 import schema
 import source
 
+read -r -d '' _X_JQ_LIB << 'JQ' || true
+# X 的 legacy.created_at 是 RFC822（"Wed Oct 07 23:06:08 +0000 2026"），jq 没有 strptime，
+# 所以手转成 RFC3339 再交给 to_utc 归一成 UTC Z。解析不了时给空串 —— schema.pipe 会把
+# 无日期的条目保留而不是丢弃（与其它源一致）。
+def x_rfc822:
+  if type != "string" then "" else
+    (capture("^[A-Za-z]{3} (?<mon>[A-Za-z]{3}) +(?<day>[0-9]{1,2}) (?<time>[0-9]{2}:[0-9]{2}:[0-9]{2}) (?<off>[+-][0-9]{4}) (?<year>[0-9]{4})$") // null) as $c
+    | if $c == null then "" else
+        (["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
+         | index($c.mon) // 99 | . + 1 | tostring
+         | if length < 2 then "0" + . else . end) as $m
+        | "\($c.year)-\($m)-\($c.day | if length < 2 then "0" + . else . end)T\($c.time)\($c.off[0:3]):\($c.off[3:5])"
+      end
+  end;
+JQ
+
+read -r -d '' _X_MAP_JQ << 'JQ' || true
+    reduce (
+      .data.search_by_raw_query.search_timeline.timeline.instructions[]?
+      | select(.type == "TimelineAddEntries")
+      | .entries[]?
+      | select(.content.entryType == "TimelineTimelineItem")
+      | (.content.itemContent.tweet_results.result? // empty)
+      | if .__typename == "TweetWithVisibilityResults" then .tweet else . end
+      | select(.legacy.full_text? != null)
+    ) as $t ({ seen: [], out: [] };
+      ($t.rest_id // "") as $id
+      | if $id == "" or (.seen | index($id)) then . else { seen: (.seen + [$id]), out: (.out + [$t]) } end
+    )
+    | .out[]
+    | . as $t
+    | ($t.note_tweet.note_tweet_results.result.text // $t.legacy.full_text // "") as $text
+    | {
+        source: "x",
+        id: $t.rest_id,
+        url: ("https://x.com/" + ($t.core.user_results.result.core.screen_name // "i")
+              + "/status/" + $t.rest_id),
+        # X 没有标题这一栏；取正文首 120 字，让默认渲染与 agent 读 JSONL 时都有个抓手
+        title: ($text | gsub("\\s+"; " ") | .[0:120]),
+        text: $text,
+        # 作者的 screen_name 在 core.user_results.result.core（新版路径），不是 legacy.screen_name
+        author: ($t.core.user_results.result.core.screen_name // ""),
+        created_at: ($t.legacy.created_at | x_rfc822 | to_utc),
+        engagement: {
+          likes: ($t.legacy.favorite_count // 0),
+          reposts: ($t.legacy.retweet_count // 0),
+          replies: ($t.legacy.reply_count // 0),
+          quotes: ($t.legacy.quote_count // 0),
+          views: (($t.views.count // 0) | if type == "string" then (tonumber? // 0) else . end)
+        },
+        tags: [($t.legacy.entities.hashtags // [])[] | .text // empty],
+        query: $query
+      }
+JQ
+
+read -r -d '' _X_TWEET_MAP_JQ << 'JQ' || true
+	{
+      source: "x",
+      id: .id_str,
+      url: ("https://x.com/" + (.user.screen_name // "i") + "/status/" + .id_str),
+      title: (.text // "" | gsub("\\s+"; " ") | .[0:120]),
+      text: (.text // ""),
+      author: (.user.screen_name // ""),
+      # syndication 给的 created_at 已经是 ISO（带毫秒），过 to_utc 去掉毫秒
+      created_at: (.created_at // "" | to_utc),
+      # 只有点赞与回复数；点赞数可能是慢更新的（实测新推文是 0）
+      engagement: { likes: (.favorite_count // 0), replies: (.conversation_count // 0) },
+      # syndication 端点的键是复数 hashtags；单数写法也接（老响应与部分变体）
+      tags: [(.entities.hashtags // .entities.hashtag // [])[] | .text // empty],
+      query: $query
+    }
+    + (if .truncated == true then { truncated: true } else {} end)
+JQ
+
 # 网页端公开的客户端 bearer，任何人都能在 x.com 的 JS 里读到，不是账号凭证。
 # DIG_X_BEARER 可覆盖，官方轮换时不必改代码。
 _X_BEARER="${DIG_X_BEARER:-AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA}"
@@ -52,22 +126,6 @@ _X_OPS_KEY='query-ids'
 _X_OPS_TTL=2592000
 
 _X_FEATURES='{"rweb_video_screen_enabled":true,"profile_label_improvements_pcf_label_in_post_enabled":true,"responsive_web_profile_redirect_enabled":true,"rweb_tipjar_consumption_enabled":true,"verified_phone_label_enabled":false,"creator_subscriptions_tweet_preview_api_enabled":true,"responsive_web_graphql_timeline_navigation_enabled":true,"responsive_web_graphql_exclude_directive_enabled":true,"responsive_web_graphql_skip_user_profile_image_extensions_enabled":false,"premium_content_api_read_enabled":false,"communities_web_enable_tweet_community_results_fetch":true,"c9s_tweet_anatomy_moderator_badge_enabled":true,"responsive_web_grok_analyze_button_fetch_trends_enabled":false,"responsive_web_grok_analyze_post_followups_enabled":false,"responsive_web_grok_annotations_enabled":false,"responsive_web_jetfuel_frame":true,"post_ctas_fetch_enabled":true,"responsive_web_grok_share_attachment_enabled":true,"responsive_web_edit_tweet_api_enabled":true,"graphql_is_translatable_rweb_tweet_is_translatable_enabled":true,"view_counts_everywhere_api_enabled":true,"longform_notetweets_consumption_enabled":true,"responsive_web_twitter_article_tweet_consumption_enabled":true,"tweet_awards_web_tipping_enabled":false,"responsive_web_grok_show_grok_translated_post":false,"responsive_web_grok_analysis_button_from_backend":true,"creator_subscriptions_quote_tweet_preview_enabled":false,"freedom_of_speech_not_reach_fetch_enabled":true,"standardized_nudges_misinfo":true,"tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled":true,"rweb_video_timestamps_enabled":true,"longform_notetweets_rich_text_read_enabled":true,"longform_notetweets_inline_media_enabled":true,"responsive_web_grok_image_annotation_enabled":true,"responsive_web_grok_imagine_annotation_enabled":true,"responsive_web_grok_community_note_auto_translation_is_enabled":false,"articles_preview_enabled":true,"responsive_web_enhance_cards_enabled":false}'
-
-read -r -d '' _X_JQ_LIB << 'JQ' || true
-# X 的 legacy.created_at 是 RFC822（"Wed Oct 07 23:06:08 +0000 2026"），jq 没有 strptime，
-# 所以手转成 RFC3339 再交给 to_utc 归一成 UTC Z。解析不了时给空串 —— schema.pipe 会把
-# 无日期的条目保留而不是丢弃（与其它源一致）。
-def x_rfc822:
-  if type != "string" then "" else
-    (capture("^[A-Za-z]{3} (?<mon>[A-Za-z]{3}) +(?<day>[0-9]{1,2}) (?<time>[0-9]{2}:[0-9]{2}:[0-9]{2}) (?<off>[+-][0-9]{4}) (?<year>[0-9]{4})$") // null) as $c
-    | if $c == null then "" else
-        (["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
-         | index($c.mon) // 99 | . + 1 | tostring
-         | if length < 2 then "0" + . else . end) as $m
-        | "\($c.year)-\($m)-\($c.day | if length < 2 then "0" + . else . end)T\($c.time)\($c.off[0:3]):\($c.off[3:5])"
-      end
-  end;
-JQ
 
 x.options() {
 	args.add_options "tweet" "" "取单条推文：数字 id 或 x.com/<user>/status/<id> 链接（零凭证）" "URL|ID"
@@ -396,23 +454,7 @@ x.tweet() {
 }
 
 x.tweet.map() {
-	json.run -c --arg query "${DIG_QUERY:-}" "$_SCHEMA_JQ_LIB"'
-	{
-      source: "x",
-      id: .id_str,
-      url: ("https://x.com/" + (.user.screen_name // "i") + "/status/" + .id_str),
-      title: (.text // "" | gsub("\\s+"; " ") | .[0:120]),
-      text: (.text // ""),
-      author: (.user.screen_name // ""),
-      # syndication 给的 created_at 已经是 ISO（带毫秒），过 to_utc 去掉毫秒
-      created_at: (.created_at // "" | to_utc),
-      # 只有点赞与回复数；点赞数可能是慢更新的（实测新推文是 0）
-      engagement: { likes: (.favorite_count // 0), replies: (.conversation_count // 0) },
-      # syndication 端点的键是复数 hashtags；单数写法也接（老响应与部分变体）
-      tags: [(.entities.hashtags // .entities.hashtag // [])[] | .text // empty],
-      query: $query
-    }
-    + (if .truncated == true then { truncated: true } else {} end)'
+	schema.jq -c "$_X_TWEET_MAP_JQ"
 }
 
 # dig fetch <推文链接>：与 --tweet 同一条路，只是入口从链接进来（零凭证）
@@ -429,43 +471,7 @@ x.search_url() {
 #   - 同一推常在 entries 里重复出现，所以按 rest_id 保序去重（不能事后 unique_by —— 那会
 #     按 id 排序，把 X 自己的时间序打乱）。
 x.map() {
-	json.run -c --arg query "${DIG_QUERY:-}" "$_SCHEMA_JQ_LIB$_X_JQ_LIB"'
-    reduce (
-      .data.search_by_raw_query.search_timeline.timeline.instructions[]?
-      | select(.type == "TimelineAddEntries")
-      | .entries[]?
-      | select(.content.entryType == "TimelineTimelineItem")
-      | (.content.itemContent.tweet_results.result? // empty)
-      | if .__typename == "TweetWithVisibilityResults" then .tweet else . end
-      | select(.legacy.full_text? != null)
-    ) as $t ({ seen: [], out: [] };
-      ($t.rest_id // "") as $id
-      | if $id == "" or (.seen | index($id)) then . else { seen: (.seen + [$id]), out: (.out + [$t]) } end
-    )
-    | .out[]
-    | . as $t
-    | ($t.note_tweet.note_tweet_results.result.text // $t.legacy.full_text // "") as $text
-    | {
-        source: "x",
-        id: $t.rest_id,
-        url: ("https://x.com/" + ($t.core.user_results.result.core.screen_name // "i")
-              + "/status/" + $t.rest_id),
-        # X 没有标题这一栏；取正文首 120 字，让默认渲染与 agent 读 JSONL 时都有个抓手
-        title: ($text | gsub("\\s+"; " ") | .[0:120]),
-        text: $text,
-        # 作者的 screen_name 在 core.user_results.result.core（新版路径），不是 legacy.screen_name
-        author: ($t.core.user_results.result.core.screen_name // ""),
-        created_at: ($t.legacy.created_at | x_rfc822 | to_utc),
-        engagement: {
-          likes: ($t.legacy.favorite_count // 0),
-          reposts: ($t.legacy.retweet_count // 0),
-          replies: ($t.legacy.reply_count // 0),
-          quotes: ($t.legacy.quote_count // 0),
-          views: (($t.views.count // 0) | if type == "string" then (tonumber? // 0) else . end)
-        },
-        tags: [($t.legacy.entities.hashtags // [])[] | .text // empty],
-        query: $query
-      }'
+	schema.jq -c "$_X_JQ_LIB$_X_MAP_JQ"
 }
 
 source.url.register x x.com twitter.com

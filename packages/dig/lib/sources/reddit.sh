@@ -18,6 +18,30 @@ import parse
 import schema
 import source
 
+read -r -d '' _REDDIT_COMMENTS_JQ << 'JQ' || true
+    [ .. | objects | select(.body? != null and .author? != "AutoModerator") | .body ]
+    | map(gsub("\\s+"; " ") | sub("^ +"; "") | sub(" +$"; ""))
+    | map(select(length >= $min))
+    | .[0:$keep]
+    | join("\n\n---\n\n")
+JQ
+
+read -r -d '' _REDDIT_MAP_JQ << 'JQ' || true
+    (.data // [])[]
+    | {
+        source: "reddit",
+        id: (.id | tostring),
+        url: ("https://www.reddit.com/r/" + (.subreddit // "") + "/comments/" + (.id | tostring) + "/"),
+        title: (.title // ""),
+        text: (.selftext // ""),
+        author: (.author // ""),
+        created_at: ((.created_utc // 0) | if . > 0 then todateiso8601 else "" end),
+        engagement: { score: (.score // 0), comments: (.num_comments // 0) },
+        tags: ([.subreddit] | map(select(. != null and . != ""))),
+        query: $query
+      }
+JQ
+
 # 只取要用的字段，避免整条 reddit 帖子（含 preview 图片）把响应撑大。
 # 注意：`permalink` 不在 Arctic Shift 的可选字段里（实测报 "'permalink' is not a valid field"），
 # 帖子 URL 由 subreddit + id 自己拼。
@@ -138,20 +162,7 @@ reddit.search_url() {
 }
 
 reddit.map() {
-	json.run -c --arg query "${DIG_QUERY:-}" '
-    (.data // [])[]
-    | {
-        source: "reddit",
-        id: (.id | tostring),
-        url: ("https://www.reddit.com/r/" + (.subreddit // "") + "/comments/" + (.id | tostring) + "/"),
-        title: (.title // ""),
-        text: (.selftext // ""),
-        author: (.author // ""),
-        created_at: ((.created_utc // 0) | if . > 0 then todateiso8601 else "" end),
-        engagement: { score: (.score // 0), comments: (.num_comments // 0) },
-        tags: ([.subreddit] | map(select(. != null and . != ""))),
-        query: $query
-      }'
+	schema.jq -c "$_REDDIT_MAP_JQ"
 }
 
 reddit.enrich_one() {
@@ -172,12 +183,7 @@ reddit.enrich_one() {
 # 评论树是嵌套的；`..` 是前序遍历，等于按 Reddit 自己的排序取评论。
 # AutoModerator 的自动回复又长又没信息量，按作者名排掉。
 reddit.comments_text() {
-	json.run -r --argjson keep "$_REDDIT_COMMENT_KEEP" --argjson min "$_REDDIT_COMMENT_MIN" '
-    [ .. | objects | select(.body? != null and .author? != "AutoModerator") | .body ]
-    | map(gsub("\\s+"; " ") | sub("^ +"; "") | sub(" +$"; ""))
-    | map(select(length >= $min))
-    | .[0:$keep]
-    | join("\n\n---\n\n")'
+	json.run -r --argjson keep "$_REDDIT_COMMENT_KEEP" --argjson min "$_REDDIT_COMMENT_MIN" "$_REDDIT_COMMENTS_JQ"
 }
 
 source.url.register reddit reddit.com redd.it

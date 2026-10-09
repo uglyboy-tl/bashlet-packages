@@ -14,6 +14,21 @@ import common
 import schema
 import source
 
+read -r -d '' _WECHAT_MAP_JQ << 'JQ' || true
+    {
+        source: "wechat",
+        id: $id,
+        url: $url,
+        title: (.title // ""),
+        text: (.text // ""),
+        author: (.author // ""),
+        created_at: "",
+        engagement: {},
+        tags: [],
+        query: $query
+      }
+JQ
+
 wechat.probe() { browser.probe; }
 
 wechat.search() {
@@ -68,19 +83,7 @@ wechat.url.clean() {
 wechat.map() {
 	local url="$1" id
 	id="$(wechat.url.id "$url" || printf '%s' "$url")"
-	json.run -c --arg query "${DIG_QUERY:-}" --arg url "$url" --arg id "$id" '
-    {
-        source: "wechat",
-        id: $id,
-        url: $url,
-        title: (.title // ""),
-        text: (.text // ""),
-        author: (.author // ""),
-        created_at: "",
-        engagement: {},
-        tags: [],
-        query: $query
-      }'
+	schema.jq -c --arg url "$url" --arg id "$id" "$_WECHAT_MAP_JQ"
 }
 
 source.url.register wechat mp.weixin.qq.com

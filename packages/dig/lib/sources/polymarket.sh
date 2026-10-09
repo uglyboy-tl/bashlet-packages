@@ -10,6 +10,23 @@ import common
 import schema
 import source
 
+read -r -d '' _POLYMARKET_MAP_JQ << 'JQ' || true
+    def num: if type == "number" then . elif type == "string" then (tonumber? // 0) else 0 end;
+    .events[]?
+    | {
+        source: "polymarket",
+        id: (.slug // (.id | tostring)),
+        url: ("https://polymarket.com/event/" + (.slug // "")),
+        title: (.title // ""),
+        text: ([.markets[]? | .question] | map(select(. != null and . != "")) | join(" / ")),
+        author: "",
+        created_at: "",
+        engagement: { volume: (.volume | num), liquidity: (.liquidity | num) },
+        tags: ["prediction-market"],
+        query: $query
+      }
+JQ
+
 polymarket.probe() { dig.http.probe "https://gamma-api.polymarket.com/public-search?q=test&page=1"; }
 
 # 从 event/market URL 抠出 slug
@@ -49,21 +66,7 @@ polymarket.search_url() {
 }
 
 polymarket.map() {
-	json.run -c --arg query "${DIG_QUERY:-}" '
-    def num: if type == "number" then . elif type == "string" then (tonumber? // 0) else 0 end;
-    .events[]?
-    | {
-        source: "polymarket",
-        id: (.slug // (.id | tostring)),
-        url: ("https://polymarket.com/event/" + (.slug // "")),
-        title: (.title // ""),
-        text: ([.markets[]? | .question] | map(select(. != null and . != "")) | join(" / ")),
-        author: "",
-        created_at: "",
-        engagement: { volume: (.volume | num), liquidity: (.liquidity | num) },
-        tags: ["prediction-market"],
-        query: $query
-      }'
+	schema.jq -c "$_POLYMARKET_MAP_JQ"
 }
 
 source.url.register polymarket polymarket.com

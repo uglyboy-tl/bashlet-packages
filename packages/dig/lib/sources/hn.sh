@@ -13,6 +13,59 @@ import parse
 import schema
 import source
 
+read -r -d '' _HN_URL_JQ << 'JQ' || true
+        { hits: [ {
+            objectID: (.id | tostring),
+            title: (.title // ""),
+            url: .url,
+            story_text: (.text // ""),
+            author: (.author // ""),
+            created_at: (.created_at // ""),
+            points: (.points // 0),
+            num_comments: ((.children // []) | length),
+            _tags: ([.type] | map(select(. != null and . != "")))
+          } ] }
+JQ
+
+read -r -d '' _HN_COMMENTS_TEXT_JQ << 'JQ' || true
+    [ .. | objects | select(.text? != null) | (.text | html_text) ]
+    | map(select(length >= $min))
+    | .[0:$keep]
+    | join("\n\n---\n\n")
+JQ
+
+read -r -d '' _HN_MAP_COMMENTS_JQ << 'JQ' || true
+    (.hits // [])[]
+    | {
+        source: "hn",
+        id: (.objectID | tostring),
+        url: ("https://news.ycombinator.com/item?id=" + .objectID),
+        title: (.story_title // "(无标题)"),
+        text: ((.comment_text // "") | html_text),
+        author: (.author // ""),
+        created_at: (.created_at // ""),
+        engagement: { points: (.points // 0) },
+        tags: ((._tags // []) | map(select(test("^(author|story)_") | not))),
+        query: $query
+      }
+JQ
+
+read -r -d '' _HN_MAP_JQ << 'JQ' || true
+    (.hits // [])[]
+    | {
+        source: "hn",
+        id: (.objectID | tostring),
+        url: (.url // ("https://news.ycombinator.com/item?id=" + .objectID)),
+        title: (.title // .story_title // ""),
+        text: ((.story_text // "") | html_text),
+        author: (.author // ""),
+        created_at: (.created_at // ""),
+        engagement: { points: (.points // 0), comments: (.num_comments // 0) },
+        tags: ((._tags // []) | map(select(test("^(author|story)_") | not))),
+        query: $query
+      }
+JQ
+
 # 单条故事最多取几条评论、单条评论最短多少字（过滤 "SABR" 这类噪音）
 _HN_COMMENT_KEEP=12
 _HN_COMMENT_MIN=24
@@ -75,18 +128,7 @@ hn.search_url() {
 		return 1
 	}
 	body="$(dig.http.get "https://hn.algolia.com/api/v1/items/$id")" || return 1
-	printf '%s' "$body" | json.run -c '
-        { hits: [ {
-            objectID: (.id | tostring),
-            title: (.title // ""),
-            url: .url,
-            story_text: (.text // ""),
-            author: (.author // ""),
-            created_at: (.created_at // ""),
-            points: (.points // 0),
-            num_comments: ((.children // []) | length),
-            _tags: ([.type] | map(select(. != null and . != "")))
-          } ] }' | hn.map | schema.pipe 0 | schema.limit 1
+	printf '%s' "$body" | json.run -c "$_HN_URL_JQ" | hn.map | schema.pipe 0 | schema.limit 1
 }
 
 hn.search_comments() {
@@ -101,37 +143,11 @@ hn.search_comments() {
 }
 
 hn.map() {
-	json.run -c --arg query "${DIG_QUERY:-}" "$_SCHEMA_JQ_LIB"'
-    (.hits // [])[]
-    | {
-        source: "hn",
-        id: (.objectID | tostring),
-        url: (.url // ("https://news.ycombinator.com/item?id=" + .objectID)),
-        title: (.title // .story_title // ""),
-        text: ((.story_text // "") | html_text),
-        author: (.author // ""),
-        created_at: (.created_at // ""),
-        engagement: { points: (.points // 0), comments: (.num_comments // 0) },
-        tags: ((._tags // []) | map(select(test("^(author|story)_") | not))),
-        query: $query
-      }'
+	schema.jq -c "$_HN_MAP_JQ"
 }
 
 hn.map_comments() {
-	json.run -c --arg query "${DIG_QUERY:-}" "$_SCHEMA_JQ_LIB"'
-    (.hits // [])[]
-    | {
-        source: "hn",
-        id: (.objectID | tostring),
-        url: ("https://news.ycombinator.com/item?id=" + .objectID),
-        title: (.story_title // "(无标题)"),
-        text: ((.comment_text // "") | html_text),
-        author: (.author // ""),
-        created_at: (.created_at // ""),
-        engagement: { points: (.points // 0) },
-        tags: ((._tags // []) | map(select(test("^(author|story)_") | not))),
-        query: $query
-      }'
+	schema.jq -c "$_HN_MAP_COMMENTS_JQ"
 }
 
 hn.enrich_one() {
@@ -151,11 +167,7 @@ hn.enrich_one() {
 
 # 评论树是嵌套的；`..` 是前序遍历，等于按 HN 自己的排序取评论
 hn.comments_text() {
-	json.run -r --argjson keep "$_HN_COMMENT_KEEP" --argjson min "$_HN_COMMENT_MIN" "$_SCHEMA_JQ_LIB"'
-    [ .. | objects | select(.text? != null) | (.text | html_text) ]
-    | map(select(length >= $min))
-    | .[0:$keep]
-    | join("\n\n---\n\n")'
+	schema.jq -r --argjson keep "$_HN_COMMENT_KEEP" --argjson min "$_HN_COMMENT_MIN" "$_HN_COMMENTS_TEXT_JQ"
 }
 
 source.url.register hn news.ycombinator.com

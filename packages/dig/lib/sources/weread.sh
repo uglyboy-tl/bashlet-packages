@@ -12,6 +12,34 @@ import parse
 import schema
 import source
 
+read -r -d '' _WEREAD_MAP_JQ << 'JQ' || true
+    [ .results[]? as $r | $r.books[]? | { group: ($r.title // ""), book: . } ]
+    | map(select(.book.bookInfo.bookId != null))
+    | reduce .[] as $x (
+        { seen: {}, out: [] };
+        ($x.book.bookInfo.bookId) as $id
+        | if .seen[$id] then . else .seen[$id] = true | .out += [$x] end
+      )
+    | .out[]
+    | (.book.bookInfo) as $b
+    | {
+        source: "weread",
+        id: $b.bookId,
+        url: ($b.deepLink // ""),
+        title: ($b.title // ""),
+        text: "",
+        author: ($b.author // ""),
+        created_at: "",
+        engagement: {
+          rating: ($b.newRating // 0),
+          ratings: ($b.newRatingCount // 0),
+          reading: (.book.readingCount // 0)
+        },
+        tags: ([ $b.newRatingDetail.title, .group ] | map(select(. != null and . != ""))),
+        query: $query
+      }
+JQ
+
 weread.probe() {
 	if ! weread.key > /dev/null 2>&1; then
 		printf '设置 WEREAD_API_KEY（写进包内 .env）'
@@ -126,32 +154,7 @@ weread.search() {
 }
 
 weread.map() {
-	json.run -c --arg query "${DIG_QUERY:-}" '
-    [ .results[]? as $r | $r.books[]? | { group: ($r.title // ""), book: . } ]
-    | map(select(.book.bookInfo.bookId != null))
-    | reduce .[] as $x (
-        { seen: {}, out: [] };
-        ($x.book.bookInfo.bookId) as $id
-        | if .seen[$id] then . else .seen[$id] = true | .out += [$x] end
-      )
-    | .out[]
-    | (.book.bookInfo) as $b
-    | {
-        source: "weread",
-        id: $b.bookId,
-        url: ($b.deepLink // ""),
-        title: ($b.title // ""),
-        text: "",
-        author: ($b.author // ""),
-        created_at: "",
-        engagement: {
-          rating: ($b.newRating // 0),
-          ratings: ($b.newRatingCount // 0),
-          reading: (.book.readingCount // 0)
-        },
-        tags: ([ $b.newRatingDetail.title, .group ] | map(select(. != null and . != ""))),
-        query: $query
-      }'
+	schema.jq -c "$_WEREAD_MAP_JQ"
 }
 
 # -i N：为前 N 本抓 /book/info，把简介填进 text。

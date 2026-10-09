@@ -44,9 +44,12 @@ dig.requests.init() {
 # 吞掉，用户只看到空结果或误报（如把解析失败报成「数据不存在」）。
 # doctor 不调它：探活要用 rc=3 把「缺什么」显示在表里。
 dig.require.deps() {
-	json.require
-	requests.curl.available || {
-		log.error "缺少依赖：curl"
+	# 一次把缺的都列出来（缺两个时用户能一次装齐，不用跑两遍）
+	local missing=""
+	json.available || missing+="${missing:+, }jq"
+	requests.curl.available || missing+="${missing:+, }curl"
+	[[ -z $missing ]] || {
+		log.error "缺少依赖：$missing"
 		exit 1
 	}
 }
