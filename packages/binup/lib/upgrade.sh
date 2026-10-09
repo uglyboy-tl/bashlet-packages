@@ -46,10 +46,11 @@ cmd_upgrade() {
 
 	ensure_download_dir
 
-	requests.init 2> /dev/null || {
-		log.error "Failed to initialize requests module"
+	requests.available || {
+		log.error "缺少依赖：curl 或 jq"
 		exit 1
 	}
+	requests.init 2> /dev/null
 
 	local -n target_packages="$(args.args)"
 	local -a packages_to_upgrade=()

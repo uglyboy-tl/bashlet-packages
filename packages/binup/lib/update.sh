@@ -38,10 +38,11 @@ cmd_update() {
 
 	ensure_download_dir
 	github_token
-	requests.init "-4" 2> /dev/null || {
-		log.error "Failed to initialize requests module"
+	requests.available || {
+		log.error "缺少依赖：curl 或 jq"
 		exit 1
 	}
+	requests.init "-4" 2> /dev/null
 
 	console.layout.section "检查更新"
 
