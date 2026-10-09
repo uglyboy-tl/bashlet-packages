@@ -75,7 +75,7 @@ hn.search_url() {
 		return 1
 	}
 	body="$(dig.http.get "https://hn.algolia.com/api/v1/items/$id")" || return 1
-	printf '%s' "$body" | "$(schema.jq.bin)" -c '
+	printf '%s' "$body" | json.run -c '
         { hits: [ {
             objectID: (.id | tostring),
             title: (.title // ""),
@@ -101,7 +101,7 @@ hn.search_comments() {
 }
 
 hn.map() {
-	"$(schema.jq.bin)" -c --arg query "${DIG_QUERY:-}" "$_SCHEMA_JQ_LIB"'
+	json.run -c --arg query "${DIG_QUERY:-}" "$_SCHEMA_JQ_LIB"'
     (.hits // [])[]
     | {
         source: "hn",
@@ -118,7 +118,7 @@ hn.map() {
 }
 
 hn.map_comments() {
-	"$(schema.jq.bin)" -c --arg query "${DIG_QUERY:-}" "$_SCHEMA_JQ_LIB"'
+	json.run -c --arg query "${DIG_QUERY:-}" "$_SCHEMA_JQ_LIB"'
     (.hits // [])[]
     | {
         source: "hn",
@@ -136,7 +136,7 @@ hn.map_comments() {
 
 hn.enrich_one() {
 	local line="$1" id item text
-	id="$(printf '%s' "$line" | "$(schema.jq.bin)" -r '.id // empty')"
+	id="$(printf '%s' "$line" | json.run -r '.id // empty')"
 	[[ -n $id ]] || {
 		printf '%s' "$line"
 		return 0
@@ -151,7 +151,7 @@ hn.enrich_one() {
 
 # 评论树是嵌套的；`..` 是前序遍历，等于按 HN 自己的排序取评论
 hn.comments_text() {
-	"$(schema.jq.bin)" -r --argjson keep "$_HN_COMMENT_KEEP" --argjson min "$_HN_COMMENT_MIN" "$_SCHEMA_JQ_LIB"'
+	json.run -r --argjson keep "$_HN_COMMENT_KEEP" --argjson min "$_HN_COMMENT_MIN" "$_SCHEMA_JQ_LIB"'
     [ .. | objects | select(.text? != null) | (.text | html_text) ]
     | map(select(length >= $min))
     | .[0:$keep]

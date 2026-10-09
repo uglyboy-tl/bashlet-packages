@@ -10,9 +10,6 @@ import std/system
 
 import parse
 
-# jq 二进制定位归 parse（源适配器与 schema 都要用）
-schema.jq.bin() { parse.jq.bin; }
-
 # 公共 jq 函数 = parse 的文本原语（to_utc / html_text / XML 取值）+ 本模块的 norm_url。
 # 源适配器统一用 "$_SCHEMA_JQ_LIB"'<program>' 拼程序，所以两边的函数都能用。
 read -r -d '' _SCHEMA_JQ_NORM_URL << 'JQ' || true
@@ -114,7 +111,7 @@ schema.period.after() {
 
 schema.pipe() {
 	local after="${1:-0}"
-	"$(schema.jq.bin)" -c --arg now "$(schema.now)" --argjson after "$after" \
+	json.run -c --arg now "$(schema.now)" --argjson after "$after" \
 		"$_SCHEMA_JQ_LIB$_SCHEMA_JQ_REQUIRED$_SCHEMA_JQ_PIPE"
 }
 
@@ -147,7 +144,7 @@ schema.enrich() {
 	done
 }
 
-schema.render() { "$(schema.jq.bin)" -r "$_SCHEMA_JQ_RENDER"; }
+schema.render() { json.run -r "$_SCHEMA_JQ_RENDER"; }
 
 schema.output() {
 	if [[ ${DIG_JSON:-false} == true ]]; then

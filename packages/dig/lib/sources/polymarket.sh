@@ -43,13 +43,13 @@ polymarket.search_url() {
 	}
 	out="$(dig.http.get "https://gamma-api.polymarket.com/public-search" \
 		"q=$slug" "page=1" "events_status=active" "keep_closed_markets=0")" || return 1
-	printf '%s' "$out" | "$(schema.jq.bin)" -c --arg slug "$slug" '
+	printf '%s' "$out" | json.run -c --arg slug "$slug" '
         { events: [ (.events // [])[] | select(.slug == $slug or ([.markets[]?.slug] | index($slug))) ] }' |
 		polymarket.map | schema.pipe 0 | schema.limit 1
 }
 
 polymarket.map() {
-	"$(schema.jq.bin)" -c --arg query "${DIG_QUERY:-}" '
+	json.run -c --arg query "${DIG_QUERY:-}" '
     def num: if type == "number" then . elif type == "string" then (tonumber? // 0) else 0 end;
     .events[]?
     | {

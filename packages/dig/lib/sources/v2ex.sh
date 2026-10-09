@@ -28,7 +28,7 @@ v2ex.search() {
 }
 
 v2ex.map_hot() {
-	"$(schema.jq.bin)" -c --arg query "" '
+	json.run -c --arg query "" '
     .[]
     | {
         source: "v2ex",
@@ -47,7 +47,7 @@ v2ex.map_hot() {
 # sov2ex 的 created 是「北京时间、无时区」的字符串（如 2017-05-04T09:38:57），
 # 按 UTC 解析后减 8 小时才是真正的 UTC 时刻。
 v2ex.map_search() {
-	"$(schema.jq.bin)" -c --arg query "${DIG_QUERY:-}" '
+	json.run -c --arg query "${DIG_QUERY:-}" '
     .hits[]?
     | ._source
     | {
@@ -92,7 +92,7 @@ v2ex.search_url() {
 # 云端浏览器给的是渲染后的整页 markdown：裁掉导航/广告/页脚，保留主题正文 + 回复表格
 v2ex.map_topic() {
 	local id="$1"
-	"$(schema.jq.bin)" -c --arg query "${DIG_QUERY:-}" --arg id "$id" --arg url "https://www.v2ex.com/t/$id" '
+	json.run -c --arg query "${DIG_QUERY:-}" --arg id "$id" --arg url "https://www.v2ex.com/t/$id" '
     def opt($s; $re): if ($s | test($re)) then ($s | capture($re) | .v) else "" end;
     def trim_text:
       sub("(?ms)^.*?(?=^# )"; "")            # 标题之前的导航与广告

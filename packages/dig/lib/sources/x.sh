@@ -96,7 +96,7 @@ x.probe() {
 
 	local probe qid
 	probe="$(dig.http.probe "https://x.com/")" || return $?
-	qid="$("$(schema.jq.bin)" -r '.SearchTimeline // ""' <<< "$(x.ops.cached)" 2> /dev/null)" || qid=""
+	qid="$(json.run -r '.SearchTimeline // ""' <<< "$(x.ops.cached)" 2> /dev/null)" || qid=""
 	if [[ -n $qid ]]; then
 		printf '%s；搜索可用（queryId 已缓存）' "$probe"
 	else
@@ -135,7 +135,7 @@ x.search() {
 		log.error "无法创建临时文件，发不出请求"
 		return 1
 	}
-	vars="$("$(schema.jq.bin)" -nc --arg q "$DIG_QUERY" --argjson n "$count" \
+	vars="$(json.run -nc --arg q "$DIG_QUERY" --argjson n "$count" \
 		'{rawQuery: $q, count: $n, querySource: "typed_query", product: "Latest"}')" || {
 		rm -f "$out"
 		return 1
@@ -149,12 +149,12 @@ x.search() {
 			rm -f "$out"
 			return 1
 		fi
-		body="$("$(schema.jq.bin)" -nc --argjson f "$_X_FEATURES" --arg id "$query_id" \
+		body="$(json.run -nc --argjson f "$_X_FEATURES" --arg id "$query_id" \
 			'{features: $f, queryId: $id}')" || {
 			rm -f "$out"
 			return 1
 		}
-		url="https://x.com/i/api/graphql/${query_id}/SearchTimeline?variables=$("$(schema.jq.bin)" -nr --arg v "$vars" '$v | @uri')" || {
+		url="https://x.com/i/api/graphql/${query_id}/SearchTimeline?variables=$(json.run -nr --arg v "$vars" '$v | @uri')" || {
 			rm -f "$out"
 			return 1
 		}
@@ -201,7 +201,7 @@ x.search() {
 	# HTTP 200 也可能是业务错误：GraphQL 把失败放在 .errors[]，data 为空。静默返回空结果会让调用方
 	# 以为「搜到 0 条」，所以这里必须出声。
 	local gql_err
-	gql_err="$(printf '%s' "$resp" | "$(schema.jq.bin)" -r '.errors[0].message // ""' 2> /dev/null)" || gql_err=""
+	gql_err="$(printf '%s' "$resp" | json.run -r '.errors[0].message // ""' 2> /dev/null)" || gql_err=""
 	[[ -n $gql_err ]] && {
 		log.error "X 返回 GraphQL 错误：$gql_err"
 		return 1
@@ -264,7 +264,7 @@ x.ops.can_update() {
 # 拿不到就明确失败、让用户去配 cookie，而不是拿一个不知道还能活多久的值硬撑。
 x.ops.query_id() {
 	local id=""
-	id="$(x.ops.cached | "$(schema.jq.bin)" -r '.SearchTimeline // ""' 2> /dev/null)" || id=""
+	id="$(x.ops.cached | json.run -r '.SearchTimeline // ""' 2> /dev/null)" || id=""
 	if [[ -n $id ]]; then
 		printf '%s' "$id"
 		return 0
@@ -277,7 +277,7 @@ x.ops.query_id() {
 
 	log.info "本地没有 queryId 缓存（或已过期），从 x.com 的 main bundle 现取一次"
 	x.ops.update || return 1
-	id="$(x.ops.cached | "$(schema.jq.bin)" -r '.SearchTimeline // ""' 2> /dev/null)" || id=""
+	id="$(x.ops.cached | json.run -r '.SearchTimeline // ""' 2> /dev/null)" || id=""
 	[[ -n $id ]] || {
 		log.error "刷新完成了，但缓存里没有 SearchTimeline 这一项"
 		return 1
@@ -319,14 +319,14 @@ x.ops.update() {
 		grep -oE '(queryId:"[A-Za-z0-9_-]+"[[:space:]]*,[[:space:]]*operationName:"[A-Za-z0-9_]+"|operationName:"[A-Za-z0-9_]+"[[:space:]]*,[[:space:]]*queryId:"[A-Za-z0-9_-]+")' |
 		sed -E -e 's/queryId:"([^"]+)"[[:space:]]*,[[:space:]]*operationName:"([^"]+)"/\2\t\1/' \
 			-e 's/operationName:"([^"]+)"[[:space:]]*,[[:space:]]*queryId:"([^"]+)"/\1\t\2/' |
-		"$(schema.jq.bin)" -R -s 'split("\n") | map(select(length > 0)) | map(split("\t") | {(.[0]): .[1]}) | add // {}')" || true
+		json.run -R -s 'split("\n") | map(select(length > 0)) | map(split("\t") | {(.[0]): .[1]}) | add // {}')" || true
 
-	n="$(printf '%s' "$table" | "$(schema.jq.bin)" -r 'length' 2> /dev/null)" || n=0
+	n="$(printf '%s' "$table" | json.run -r 'length' 2> /dev/null)" || n=0
 	if [[ ${n:-0} -eq 0 ]]; then
 		log.error "没能从 main bundle 里提取出 operation 表（$main_url）：X 可能改了打包格式"
 		return 1
 	fi
-	sid="$(printf '%s' "$table" | "$(schema.jq.bin)" -r '.SearchTimeline // ""')"
+	sid="$(printf '%s' "$table" | json.run -r '.SearchTimeline // ""')"
 	if [[ -z $sid ]]; then
 		log.error "提取到 $n 个 operation，但里面没有 SearchTimeline"
 		return 1
@@ -361,7 +361,7 @@ x.tweet.full_text() {
 	# user 来自远端 JSON，拼进 URL 前限回 X 允许的用户名字符集
 	[[ $user =~ ^[A-Za-z0-9_]+$ ]] || return 1
 	body="$(dig.http.get_public "https://api.fxtwitter.com/${user}/status/${id}")" || return 1
-	printf '%s' "$body" | "$(schema.jq.bin)" -r '.tweet.text // empty' 2> /dev/null
+	printf '%s' "$body" | json.run -r '.tweet.text // empty' 2> /dev/null
 }
 
 # cdn.syndication.twimg.com 的 token 参数必须存在、但值不校验（实测 x / wrongtoken 都返回
@@ -375,20 +375,20 @@ x.tweet() {
 
 	local body
 	body="$(x.get "https://cdn.syndication.twimg.com/tweet-result?id=${id}&token=dig")" || return 1
-	if [[ "$(printf '%s' "$body" | "$(schema.jq.bin)" -r 'has("id_str")' 2> /dev/null)" != "true" ]]; then
+	if [[ "$(printf '%s' "$body" | json.run -r 'has("id_str")' 2> /dev/null)" != "true" ]]; then
 		log.error "取不到这条推文（id=$id）：可能不存在、已删除，或作者设了保护 —— syndication 端点对这类情况只回 {}"
 		return 1
 	fi
 
 	# note_tweet 出现 = syndication 只给了截断正文，补全文；补不到时告警，不静默给半句
-	if [[ "$(printf '%s' "$body" | "$(schema.jq.bin)" -r 'has("note_tweet")' 2> /dev/null)" == "true" ]]; then
+	if [[ "$(printf '%s' "$body" | json.run -r 'has("note_tweet")' 2> /dev/null)" == "true" ]]; then
 		local user full
-		user="$(printf '%s' "$body" | "$(schema.jq.bin)" -r '.user.screen_name // "i"' 2> /dev/null)"
+		user="$(printf '%s' "$body" | json.run -r '.user.screen_name // "i"' 2> /dev/null)"
 		if full="$(x.tweet.full_text "$user" "$id")" && [[ -n $full ]]; then
-			body="$(printf '%s' "$body" | "$(schema.jq.bin)" -c --arg t "$full" '.text = $t')"
+			body="$(printf '%s' "$body" | json.run -c --arg t "$full" '.text = $t')"
 		else
 			# 标记进 JSON：只打 stderr 的话，只读 stdout 的下游会把截断文本当全文
-			body="$(printf '%s' "$body" | "$(schema.jq.bin)" -c '.truncated = true')"
+			body="$(printf '%s' "$body" | json.run -c '.truncated = true')"
 			log.warn "这是长推文（note tweet），syndication 只回约 280 字的截断版，取全文失败：text 不完整（条目带 truncated:true）"
 		fi
 	fi
@@ -396,7 +396,7 @@ x.tweet() {
 }
 
 x.tweet.map() {
-	"$(schema.jq.bin)" -c --arg query "${DIG_QUERY:-}" "$_SCHEMA_JQ_LIB"'
+	json.run -c --arg query "${DIG_QUERY:-}" "$_SCHEMA_JQ_LIB"'
 	{
       source: "x",
       id: .id_str,
@@ -429,7 +429,7 @@ x.search_url() {
 #   - 同一推常在 entries 里重复出现，所以按 rest_id 保序去重（不能事后 unique_by —— 那会
 #     按 id 排序，把 X 自己的时间序打乱）。
 x.map() {
-	"$(schema.jq.bin)" -c --arg query "${DIG_QUERY:-}" "$_SCHEMA_JQ_LIB$_X_JQ_LIB"'
+	json.run -c --arg query "${DIG_QUERY:-}" "$_SCHEMA_JQ_LIB$_X_JQ_LIB"'
     reduce (
       .data.search_by_raw_query.search_timeline.timeline.instructions[]?
       | select(.type == "TimelineAddEntries")

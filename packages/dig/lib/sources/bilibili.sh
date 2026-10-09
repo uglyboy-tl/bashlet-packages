@@ -65,8 +65,8 @@ bilibili.search() {
 
 	local out
 	out="$(dig.http.get "$_BILI_API/x/web-interface/search/all/v2" "keyword=$DIG_QUERY")" || return 1
-	[[ "$(printf '%s' "$out" | "$(schema.jq.bin)" -r '.code // 0')" == "0" ]] || {
-		log.error "B 站接口返回 code=$(printf '%s' "$out" | "$(schema.jq.bin)" -r '.code // "?"')：$(printf '%s' "$out" | "$(schema.jq.bin)" -r '.message // ""')"
+	[[ "$(printf '%s' "$out" | json.run -r '.code // 0')" == "0" ]] || {
+		log.error "B 站接口返回 code=$(printf '%s' "$out" | json.run -r '.code // "?"')：$(printf '%s' "$out" | json.run -r '.message // ""')"
 		return 1
 	}
 
@@ -77,7 +77,7 @@ bilibili.search() {
 # view 端点的 .data 与搜索结果 item 形状不同；转成 item 后再交给 bilibili.map，
 # 避免为直取另写一套字段映射。
 bilibili.map_view() {
-	"$(schema.jq.bin)" -c '
+	json.run -c '
     { data: { result: [ { result_type: "video", data: [ {
         bvid: .data.bvid,
         title: (.data.title // ""),
@@ -108,13 +108,13 @@ bilibili.search_url() {
 	fi
 
 	view="$(dig.http.get "$_BILI_API/x/web-interface/view" "$param")" || return 1
-	[[ "$(printf '%s' "$view" | "$(schema.jq.bin)" -r '.code // 0')" == "0" ]] || {
-		log.error "B 站接口返回 code=$(printf '%s' "$view" | "$(schema.jq.bin)" -r '.code // "?"')：$(printf '%s' "$view" | "$(schema.jq.bin)" -r '.message // ""')"
+	[[ "$(printf '%s' "$view" | json.run -r '.code // 0')" == "0" ]] || {
+		log.error "B 站接口返回 code=$(printf '%s' "$view" | json.run -r '.code // "?"')：$(printf '%s' "$view" | json.run -r '.message // ""')"
 		return 1
 	}
 
-	bvid="$(printf '%s' "$view" | "$(schema.jq.bin)" -r '.data.bvid // empty')"
-	cid="$(printf '%s' "$view" | "$(schema.jq.bin)" -r '.data.cid // empty')"
+	bvid="$(printf '%s' "$view" | json.run -r '.data.bvid // empty')"
+	cid="$(printf '%s' "$view" | json.run -r '.data.cid // empty')"
 	line="$(printf '%s' "$view" | bilibili.map_view | bilibili.map | head -1)"
 	[[ -n $line ]] || return 1
 
@@ -137,7 +137,7 @@ bilibili.search_url() {
 }
 
 bilibili.map() {
-	"$(schema.jq.bin)" -c --arg query "${DIG_QUERY:-}" '
+	json.run -c --arg query "${DIG_QUERY:-}" '
     def num: if type == "number" then . elif type == "string" then (tonumber? // 0) else 0 end;
     [ .data.result[]? | select(.result_type == "video") | .data[]? ][]
     | {
@@ -159,14 +159,14 @@ bilibili.enrich_one() {
 	local line="$1" i="$2" dn="$3" tn="$4"
 	local bvid cid view text=""
 
-	bvid="$(printf '%s' "$line" | "$(schema.jq.bin)" -r '.id // empty')"
+	bvid="$(printf '%s' "$line" | json.run -r '.id // empty')"
 	[[ -n $bvid ]] || {
 		printf '%s' "$line"
 		return 0
 	}
 
 	if view="$(dig.http.get "$_BILI_API/x/web-interface/view" "bvid=$bvid")"; then
-		cid="$(printf '%s' "$view" | "$(schema.jq.bin)" -r '.data.cid // empty')"
+		cid="$(printf '%s' "$view" | json.run -r '.data.cid // empty')"
 	else
 		cid=""
 	fi
@@ -197,7 +197,7 @@ bilibili.enrich_one() {
 bilibili.subtitle() {
 	local bvid="$1" cid="$2" player url raw
 	player="$(dig.http.get "$_BILI_API/x/player/v2" "bvid=$bvid" "cid=$cid")" || return 0
-	url="$(printf '%s' "$player" | "$(schema.jq.bin)" -r '
+	url="$(printf '%s' "$player" | json.run -r '
     (.data.subtitle.subtitles // []) as $t
     | ( ($t | map(select(.lan == "ai-zh"))[0])
       // ($t | map(select((.lan // "") | startswith("zh")))[0])
@@ -207,7 +207,7 @@ bilibili.subtitle() {
 	[[ $url == //* ]] && url="https:$url"
 
 	raw="$(dig.http.get "$url")" || return 0
-	printf '%s' "$raw" | "$(schema.jq.bin)" -r --argjson cap "$_BILI_TEXT_CAP" '
+	printf '%s' "$raw" | json.run -r --argjson cap "$_BILI_TEXT_CAP" '
     ([.body[]?.content] | join(" ")) | if length > $cap then .[0:$cap] else . end'
 }
 

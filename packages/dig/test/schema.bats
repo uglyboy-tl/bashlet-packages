@@ -8,9 +8,9 @@ setup() {
 }
 
 # 以下三个原语只曾供测试使用，已从 lib/schema.sh 移入测试：断言 jq 原语本身
-url_norm() { "$(schema.jq.bin)" -rn --arg u "${1:-}" "$_SCHEMA_JQ_LIB"'$u | norm_url'; }
-to_utc() { "$(schema.jq.bin)" -rn --arg d "${1:-}" "$_SCHEMA_JQ_LIB"'$d | to_utc'; }
-html_text() { "$(schema.jq.bin)" -rn --arg t "${1:-}" "$_SCHEMA_JQ_LIB"'$t | html_text'; }
+url_norm() { json.run -rn --arg u "${1:-}" "$_SCHEMA_JQ_LIB"'$u | norm_url'; }
+to_utc() { json.run -rn --arg d "${1:-}" "$_SCHEMA_JQ_LIB"'$d | to_utc'; }
+html_text() { json.run -rn --arg t "${1:-}" "$_SCHEMA_JQ_LIB"'$t | html_text'; }
 
 @test "schema: URL 规范化去追踪参数、host 小写、去尾斜杠" {
 	run url_norm "HTTPS://Example.COM/Path/?utm_source=x&a=1#frag"

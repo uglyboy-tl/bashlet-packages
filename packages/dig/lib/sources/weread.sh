@@ -61,7 +61,7 @@ weread.body() {
 		shift 2
 		i=$((i + 1))
 	done
-	"$(schema.jq.bin)" -n --arg ver "$_WEREAD_SKILL_VERSION" "$filter" "${jqargs[@]}"
+	json.run -n --arg ver "$_WEREAD_SKILL_VERSION" "$filter" "${jqargs[@]}"
 }
 
 weread.api.call() {
@@ -81,9 +81,9 @@ weread.api.call() {
 # 网关的 errcode 才是真错误；upgrade_info 只是「有新版本」的告知，不阻断取数
 weread.check() {
 	local body="$1" code up
-	up="$(printf '%s' "$body" | "$(schema.jq.bin)" -r '.upgrade_info.message // empty')"
+	up="$(printf '%s' "$body" | json.run -r '.upgrade_info.message // empty')"
 	[[ -n $up ]] && log.warn "$up"
-	code="$(printf '%s' "$body" | "$(schema.jq.bin)" -r '.errcode // 0')"
+	code="$(printf '%s' "$body" | json.run -r '.errcode // 0')"
 	[[ $code == "0" ]] || {
 		log.error "微信读书网关错误 errcode=$code"
 		return 1
@@ -126,7 +126,7 @@ weread.search() {
 }
 
 weread.map() {
-	"$(schema.jq.bin)" -c --arg query "${DIG_QUERY:-}" '
+	json.run -c --arg query "${DIG_QUERY:-}" '
     [ .results[]? as $r | $r.books[]? | { group: ($r.title // ""), book: . } ]
     | map(select(.book.bookInfo.bookId != null))
     | reduce .[] as $x (
@@ -159,13 +159,13 @@ weread.map() {
 # 失败时保留原行——这是 schema.enrich 的契约：不能用空串把上游的行吞掉。
 weread.enrich_one() {
 	local line="$1" id info text
-	id="$(printf '%s' "$line" | "$(schema.jq.bin)" -r '.id // empty')"
+	id="$(printf '%s' "$line" | json.run -r '.id // empty')"
 	[[ -n $id ]] || {
 		printf '%s' "$line"
 		return 0
 	}
 	if info="$(weread.api.call /book/info bookId "$id")"; then
-		text="$(printf '%s' "$info" | "$(schema.jq.bin)" -r '.intro // ""')"
+		text="$(printf '%s' "$info" | json.run -r '.intro // ""')"
 	else
 		text=""
 	fi

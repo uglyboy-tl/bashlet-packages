@@ -31,11 +31,12 @@ setup() {
 	[[ "$output" == "000" || -z "$output" ]]
 }
 
-@test "dig.requests.init: 缺 jq 时返回非 0 而不是 exit" {
-	# 覆盖 system.command.exist 假装没装 jq；若 init 直接 exit，本测试会整体终止
+@test "dig.requests.init: 缺 curl 时返回非 0 而不是 exit" {
+	# 覆盖 system.command.exist 假装没装 curl；若 init 直接 exit，本测试会整体终止
+	# （jq 归 ext/json，在模块加载时就探活了，不归 init 管）
 	run bash -c '
 		source dig.sh
-		system.command.exist() { [[ $1 != jq ]]; }
+		system.command.exist() { [[ $1 != curl ]]; }
 		rc=0
 		dig.requests.init || rc=$?
 		echo "rc=$rc"

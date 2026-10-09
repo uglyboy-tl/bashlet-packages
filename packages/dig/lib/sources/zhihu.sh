@@ -55,7 +55,7 @@ zhihu.fetch() {
 }
 
 zhihu.check() {
-	"$(schema.jq.bin)" -c '
+	json.run -c '
     def hint($c):
       if $c == 10001 then "（参数错误）"
       elif $c == 20001 then "（token 无效或过期，去 developer.zhihu.com/personal 重新生成）"
@@ -93,7 +93,7 @@ zhihu.search() {
 }
 
 zhihu.map() {
-	"$(schema.jq.bin)" -c --arg query "${DIG_QUERY:-}" '
+	json.run -c --arg query "${DIG_QUERY:-}" '
     (.Data.Items // [])[]
     | {
         source: "zhihu",
@@ -110,7 +110,7 @@ zhihu.map() {
 }
 
 zhihu.hot.map() {
-	"$(schema.jq.bin)" -c --arg query "${DIG_QUERY:-}" '
+	json.run -c --arg query "${DIG_QUERY:-}" '
     (.Data.Items // [])[]
     | {
         source: "zhihu",

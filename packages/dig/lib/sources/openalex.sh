@@ -81,13 +81,13 @@ openalex.search_url() {
 			return 1
 		}
 		body="$(dig.http.get "https://api.openalex.org/works/$id")" || return 1
-		body="$(printf '%s' "$body" | "$(schema.jq.bin)" -c '{ results: [.] }')"
+		body="$(printf '%s' "$body" | json.run -c '{ results: [.] }')"
 	fi
 	printf '%s' "$body" | openalex.map | schema.pipe 0 | schema.limit 1
 }
 
 openalex.map() {
-	"$(schema.jq.bin)" -c --arg query "${DIG_QUERY:-}" '
+	json.run -c --arg query "${DIG_QUERY:-}" '
     # 摘要在 OpenAlex 里是倒排索引，按位置还原成正文
     def abstract:
       .abstract_inverted_index as $ix

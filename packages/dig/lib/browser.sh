@@ -100,7 +100,7 @@ browser.throttle() {
 browser.markdown() {
 	local url="$1" payload raw md err
 	browser.throttle
-	payload="$("$(schema.jq.bin)" -nc --arg u "$url" '{url:$u, gotoOptions:{waitUntil:"networkidle0"}}')" || return 1
+	payload="$(json.run -nc --arg u "$url" '{url:$u, gotoOptions:{waitUntil:"networkidle0"}}')" || return 1
 
 	# 用完恢复 DIG_AUTH：别把 CF 的 Authorization 头留给同进程后面的请求
 	local prev_auth="${DIG_AUTH:-}" i=0
@@ -123,9 +123,9 @@ browser.markdown() {
 	done
 	dig.auth.set "$prev_auth"
 
-	md="$(printf '%s' "$raw" | "$(schema.jq.bin)" -r 'if .success == true then (.result // "") else "" end' 2> /dev/null || true)"
+	md="$(printf '%s' "$raw" | json.run -r 'if .success == true then (.result // "") else "" end' 2> /dev/null || true)"
 	[[ -n $md ]] || {
-		err="$(printf '%s' "$raw" | "$(schema.jq.bin)" -c '.errors // .messages // "未知原因"' 2> /dev/null | cut -c1-200)"
+		err="$(printf '%s' "$raw" | json.run -c '.errors // .messages // "未知原因"' 2> /dev/null | cut -c1-200)"
 		log.error "Cloudflare Browser Run 没返回内容：$err"
 		log.error '（10000 Authentication error = token 没授「Browser Rendering - Edit」，或 account 与 token 不匹配）'
 		return 1
@@ -145,7 +145,7 @@ browser.page() {
 # 注：jq 的 capture 在**不匹配时返回 empty 而不是报错**，所以不能用 try/catch 兑——
 # 那会让整个对象变成 empty（一条输出都没有）。先 test 再 capture。
 browser.parse() {
-	"$(schema.jq.bin)" -R -s -c '
+	json.run -R -s -c '
     def grab($s; $re): if ($s | test($re)) then ($s | capture($re) | .v) else "" end;
     def clean: gsub("^\"|\"$"; "") | sub("[ ]+$"; "");
     . as $md

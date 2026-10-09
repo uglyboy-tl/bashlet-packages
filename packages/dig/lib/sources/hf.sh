@@ -85,12 +85,12 @@ hf.search_url() {
 	read -r type id <<< "$parsed"
 	[[ -n $type && -n $id ]] || return 1
 	out="$(dig.http.get "https://huggingface.co/api/$type/$id")" || return 1
-	printf '%s' "$out" | "$(schema.jq.bin)" -c '[.]' | hf.map "$type" | schema.pipe 0 | schema.limit 1
+	printf '%s' "$out" | json.run -c '[.]' | hf.map "$type" | schema.pipe 0 | schema.limit 1
 }
 
 hf.map() {
 	local type="${1:-models}"
-	"$(schema.jq.bin)" -c --arg query "${DIG_QUERY:-}" --arg type "$type" "$_SCHEMA_JQ_LIB"'
+	json.run -c --arg query "${DIG_QUERY:-}" --arg type "$type" "$_SCHEMA_JQ_LIB"'
     .[]
     | {
         source: "hf",

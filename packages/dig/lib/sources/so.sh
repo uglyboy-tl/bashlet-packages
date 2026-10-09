@@ -79,7 +79,7 @@ so.search_url() {
 
 so.map() {
 	local site="${1:-stackoverflow}"
-	"$(schema.jq.bin)" -c --arg query "${DIG_QUERY:-}" --arg site "$site" "$_SCHEMA_JQ_LIB"'
+	json.run -c --arg query "${DIG_QUERY:-}" --arg site "$site" "$_SCHEMA_JQ_LIB"'
     (.items // [])[]
     | {
         source: "so",
@@ -105,7 +105,7 @@ so.answers() {
 		lines+=("$line")
 		i=$((i + 1))
 		if ((i <= n)); then
-			ids+=("$(printf '%s' "$line" | "$(schema.jq.bin)" -r '.id // empty')")
+			ids+=("$(printf '%s' "$line" | json.run -r '.id // empty')")
 		fi
 	done
 
@@ -120,10 +120,10 @@ so.answers() {
 		dig.http.get "https://api.stackexchange.com/2.3/questions/$joined/answers" \
 			"order=desc" "sort=votes" "site=$site" "filter=withbody" "pagesize=$(dig.clamp "$((n * 3))" 100 "Stack Exchange")"
 	)"; then
-		answers_json="$(printf '%s' "$answers" | "$(schema.jq.bin)" -c '.items // []')"
+		answers_json="$(printf '%s' "$answers" | json.run -c '.items // []')"
 	fi
 
-	printf '%s\n' "${lines[@]}" | "$(schema.jq.bin)" -c \
+	printf '%s\n' "${lines[@]}" | json.run -c \
 		--argjson ans "$answers_json" --argjson cap "$_SO_TEXT_CAP" "$_SCHEMA_JQ_LIB"'
     . as $item
     | ([ $ans[] | select(.question_id == ($item.id | tonumber)) ]

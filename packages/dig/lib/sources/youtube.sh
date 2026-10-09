@@ -38,7 +38,7 @@ youtube.search() {
 	}
 
 	local body out
-	body="$("$(schema.jq.bin)" -n --arg q "$DIG_QUERY" --arg v "$_YT_WEB_VERSION" \
+	body="$(json.run -n --arg q "$DIG_QUERY" --arg v "$_YT_WEB_VERSION" \
 		'{context:{client:{clientName:"WEB",clientVersion:$v,hl:"en",gl:"US"}},query:$q}')"
 	out="$(dig.http.post_json "$_YT_API/search?key=$_YT_KEY&prettyPrint=false" "$body")" || return 1
 
@@ -49,7 +49,7 @@ youtube.search() {
 }
 
 youtube.map() {
-	"$(schema.jq.bin)" -c --arg query "${DIG_QUERY:-}" '
+	json.run -c --arg query "${DIG_QUERY:-}" '
     [ .. | objects | select(has("videoRenderer")) | .videoRenderer ][]
     | {
         source: "youtube",
@@ -71,7 +71,7 @@ youtube.map() {
 
 youtube.enrich_one() {
 	local line="$1" vid player date desc
-	vid="$(printf '%s' "$line" | "$(schema.jq.bin)" -r '.id // empty')"
+	vid="$(printf '%s' "$line" | json.run -r '.id // empty')"
 	[[ -n $vid ]] || {
 		printf '%s' "$line"
 		return 0
@@ -80,9 +80,9 @@ youtube.enrich_one() {
 		printf '%s' "$line"
 		return 0
 	fi
-	date="$(printf '%s' "$player" | "$(schema.jq.bin)" -r "$_SCHEMA_JQ_LIB"'
+	date="$(printf '%s' "$player" | json.run -r "$_SCHEMA_JQ_LIB"'
     .microformat.playerMicroformatRenderer.publishDate // "" | to_utc')"
-	desc="$(printf '%s' "$player" | "$(schema.jq.bin)" -r --argjson cap "$_YT_TEXT_CAP" '
+	desc="$(printf '%s' "$player" | json.run -r --argjson cap "$_YT_TEXT_CAP" '
     (.videoDetails.shortDescription // "") | if length > $cap then .[0:$cap] else . end')"
 	parse.json.patch "$line" "created_at=$date" "text=$desc"
 }

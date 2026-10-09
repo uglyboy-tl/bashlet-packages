@@ -18,21 +18,11 @@
 # 「ext/ 可选重能力」+「HTTP / SSE — 基于 curl + jq 的请求封装」）。
 # 只有 parse.json.embedded 是 jq-free（tr + awk），但它与 XML 部分是一个整体，
 # 一个消费者不值得再拆。
-# 另一件事：提升时 parse.jq.bin 应该改成 import 一个 ext/json（jq 定位 + 带预置库的调用），
-# 而不是像现在这样自己 system.command.required jq —— 那份重复正是「jq 定位没有家」造成的。
+# jq 定位归 bashlet 的 ext/json（import 时探活并缓存路径，重复定位只有那一份），
+# 这里只留给 jq 程序用的文本原语。
 
 import core/log
-import std/system
-
-_PARSE_JQ_BIN=""
-
-parse.jq.bin() {
-	if [[ -z $_PARSE_JQ_BIN ]]; then
-		system.command.required jq
-		_PARSE_JQ_BIN="$(command -v jq)"
-	fi
-	printf '%s' "$_PARSE_JQ_BIN"
-}
+import ext/json
 
 # 给 jq 程序用的文本原语。schema.sh 会把它接在自己的 norm_url 前面，组成 _SCHEMA_JQ_LIB。
 read -r -d '' _PARSE_JQ_LIB << 'JQ' || true
@@ -142,7 +132,7 @@ parse.json.patch() {
 		jq_args+=(--arg "$k" "$v")
 		filter+=" | .$k = \$$k"
 	done
-	printf '%s' "$line" | "$(parse.jq.bin)" -c "${jq_args[@]}" "$filter"
+	printf '%s' "$line" | json.run -c "${jq_args[@]}" "$filter"
 }
 
 # XML -> TSV：按记录标签切开，一条记录一行，字段用 \t 分隔。
@@ -163,7 +153,7 @@ parse.xml.records() {
 		return 1
 	}
 
-	"$(parse.jq.bin)" -R -s -r --arg tag "$tag" --arg spec "$fields" "$_PARSE_JQ_LIB"'
+	json.run -R -s -r --arg tag "$tag" --arg spec "$fields" "$_PARSE_JQ_LIB"'
     ($spec | split(",")) as $fields
     | [ match("(?s)<" + $tag + "(?<attrs>[^>]*)>(?<body>.*?)</" + $tag + ">"; "g") ]
     | .[]

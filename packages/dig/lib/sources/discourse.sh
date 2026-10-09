@@ -80,7 +80,7 @@ discourse.search() {
 # 创建时间 / 浏览量 / 楼层数；cooked 是 HTML，去标签后进 text。
 discourse.map_topic() {
 	local host="${1:-}"
-	"$(schema.jq.bin)" -c --arg query "${DIG_QUERY:-}" --arg host "$host" "$_SCHEMA_JQ_LIB"'
+	json.run -c --arg query "${DIG_QUERY:-}" --arg host "$host" "$_SCHEMA_JQ_LIB"'
     {
       source: "discourse",
       id: ($host + "#" + (.id | tostring)),
@@ -113,7 +113,7 @@ discourse.search_url() {
 # 用 topic_id 把两者接起来，取该主题第一条帖子的摘要。
 discourse.map() {
 	local host="${1:-}"
-	"$(schema.jq.bin)" -c --arg query "${DIG_QUERY:-}" --arg host "$host" "$_SCHEMA_JQ_LIB"'
+	json.run -c --arg query "${DIG_QUERY:-}" --arg host "$host" "$_SCHEMA_JQ_LIB"'
     (.posts // []) as $posts
     | (.topics // [])[]
     | . as $t

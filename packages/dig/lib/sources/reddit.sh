@@ -82,7 +82,7 @@ reddit.fetch() {
 		# 状态类失败（422 也在内）dig.http.request 已重试并报过错，这里不再叠加一层
 		body="$(dig.http.get "$url" "$@")" || return 1
 
-		err="$(printf '%s' "$body" | "$(schema.jq.bin)" -r 'if type == "object" then (.error // "") else "" end' 2> /dev/null || true)"
+		err="$(printf '%s' "$body" | json.run -r 'if type == "object" then (.error // "") else "" end' 2> /dev/null || true)"
 		if [[ -z $err ]]; then
 			printf '%s' "$body"
 			return 0
@@ -138,7 +138,7 @@ reddit.search_url() {
 }
 
 reddit.map() {
-	"$(schema.jq.bin)" -c --arg query "${DIG_QUERY:-}" '
+	json.run -c --arg query "${DIG_QUERY:-}" '
     (.data // [])[]
     | {
         source: "reddit",
@@ -156,7 +156,7 @@ reddit.map() {
 
 reddit.enrich_one() {
 	local line="$1" id item text
-	id="$(printf '%s' "$line" | "$(schema.jq.bin)" -r '.id // empty')"
+	id="$(printf '%s' "$line" | json.run -r '.id // empty')"
 	[[ -n $id ]] || {
 		printf '%s' "$line"
 		return 0
@@ -172,7 +172,7 @@ reddit.enrich_one() {
 # 评论树是嵌套的；`..` 是前序遍历，等于按 Reddit 自己的排序取评论。
 # AutoModerator 的自动回复又长又没信息量，按作者名排掉。
 reddit.comments_text() {
-	"$(schema.jq.bin)" -r --argjson keep "$_REDDIT_COMMENT_KEEP" --argjson min "$_REDDIT_COMMENT_MIN" '
+	json.run -r --argjson keep "$_REDDIT_COMMENT_KEEP" --argjson min "$_REDDIT_COMMENT_MIN" '
     [ .. | objects | select(.body? != null and .author? != "AutoModerator") | .body ]
     | map(gsub("\\s+"; " ") | sub("^ +"; "") | sub(" +$"; ""))
     | map(select(length >= $min))

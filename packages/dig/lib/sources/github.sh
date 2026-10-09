@@ -90,7 +90,7 @@ github.search_url() {
 
 	if [[ $kind == issue ]]; then
 		body="$(gh api "repos/$o/$r/issues/$n")" || return 1
-		printf '%s' "$body" | "$(schema.jq.bin)" -c --arg repo "$o/$r" '
+		printf '%s' "$body" | json.run -c --arg repo "$o/$r" '
             [ {
               repository: { nameWithOwner: $repo },
               number: .number,
@@ -105,7 +105,7 @@ github.search_url() {
             } ]' | github.map_issues | schema.pipe 0 | schema.limit 1
 	else
 		body="$(gh api "repos/$o/$r")" || return 1
-		printf '%s' "$body" | "$(schema.jq.bin)" -c '
+		printf '%s' "$body" | json.run -c '
             [ {
               fullName: .full_name,
               url: .html_url,
@@ -169,7 +169,7 @@ github.search_discussions() {
 }
 
 github.map_issues() {
-	"$(schema.jq.bin)" -c --arg query "${DIG_QUERY:-}" '
+	json.run -c --arg query "${DIG_QUERY:-}" '
     .[]
     | {
         source: "github",
@@ -186,7 +186,7 @@ github.map_issues() {
 }
 
 github.map_repos() {
-	"$(schema.jq.bin)" -c --arg query "${DIG_QUERY:-}" '
+	json.run -c --arg query "${DIG_QUERY:-}" '
     .[]
     | {
         source: "github",
@@ -204,7 +204,7 @@ github.map_repos() {
 }
 
 github.map_code() {
-	"$(schema.jq.bin)" -c --arg query "${DIG_QUERY:-}" '
+	json.run -c --arg query "${DIG_QUERY:-}" '
     .[]
     | {
         source: "github",
@@ -222,7 +222,7 @@ github.map_code() {
 
 # 提交时间带时区偏移（如 +08:00），统一转 UTC
 github.map_commits() {
-	"$(schema.jq.bin)" -c --arg query "${DIG_QUERY:-}" "$_SCHEMA_JQ_LIB"'
+	json.run -c --arg query "${DIG_QUERY:-}" "$_SCHEMA_JQ_LIB"'
     .[]
     | {
         source: "github",
@@ -239,7 +239,7 @@ github.map_commits() {
 }
 
 github.map_discussions() {
-	"$(schema.jq.bin)" -c --arg query "${DIG_QUERY:-}" '
+	json.run -c --arg query "${DIG_QUERY:-}" '
     (.data.search.nodes // [])[]
     | select(.number != null)
     | {

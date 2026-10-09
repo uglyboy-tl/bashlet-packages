@@ -28,11 +28,9 @@ dig.requests.init() {
 	local no_creds=false
 	[[ ${1:-} == "--no-creds" ]] && no_creds=true
 
-	local missing=""
-	system.command.exist curl || missing+="${missing:+, }curl"
-	system.command.exist jq || missing+="${missing:+, }jq"
-	[[ -z $missing ]] || {
-		log.error "缺少依赖：$missing（dig 需要 curl 与 jq）"
+	# jq 的探活归 ext/json（模块加载时即检查），此处只管 curl
+	system.command.exist curl || {
+		log.error "缺少依赖：curl（dig 需要 curl 与 jq）"
 		return 3
 	}
 

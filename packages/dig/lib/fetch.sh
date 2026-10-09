@@ -81,7 +81,7 @@ fetch.fallback.enabled() {
 
 fetch.fallback.item() {
 	local url="$1"
-	browser.page "$url" | "$(schema.jq.bin)" -c --arg url "$url" '
+	browser.page "$url" | json.run -c --arg url "$url" '
     {
         source: "browser",
         id: $url,

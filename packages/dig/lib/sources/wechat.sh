@@ -68,7 +68,7 @@ wechat.url.clean() {
 wechat.map() {
 	local url="$1" id
 	id="$(wechat.url.id "$url" || printf '%s' "$url")"
-	"$(schema.jq.bin)" -c --arg query "${DIG_QUERY:-}" --arg url "$url" --arg id "$id" '
+	json.run -c --arg query "${DIG_QUERY:-}" --arg url "$url" --arg id "$id" '
     {
         source: "wechat",
         id: $id,

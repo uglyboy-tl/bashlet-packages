@@ -62,7 +62,7 @@ arxiv.search_url() {
 # Atom -> TSV：published / id / title / summary / 全部作者
 arxiv.map() {
 	parse.xml.records entry 'published,id,title,summary,*name' |
-		"$(schema.jq.bin)" -R -s -c --arg query "${DIG_QUERY:-}" '
+		json.run -R -s -c --arg query "${DIG_QUERY:-}" '
     [ split("\n")[] | select(length > 0) | split("\t") ][]
     | {
         source: "arxiv",
