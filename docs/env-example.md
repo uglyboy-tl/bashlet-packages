@@ -11,6 +11,9 @@
   因为含密钥）。
 - 入口在 `source .../import.sh` 之后、`import` 之前调用 `.env`，所以本文件只能设环境变量，
   不能调模块函数；`core/log` 的变量（`_LOG_LEVEL` 等）也因此能在这里设。
+- 产物里 `.env` 被 `tools/build` 提到模块内联**之前**（否则模块顶层读的 `_LOG_LEVEL` 不生效），
+  但仍在入口的 `PROJECT_ROOT=` 之前。所以 `.env` 里能用的只有环境变量与 `SCRIPT_NAME`，
+  **不要引用 `PROJECT_ROOT` 等脚本变量**（`set -u` 下会直接加载失败）。
 - 构建出的单文件会加载同目录 `.env`（入口声明 `# build:keep-env`），落点是 `<skill>/scripts/.env`。
 - `: "${VAR:=值}"` 只在变量未设或为空时赋值，因此**环境里已设的非空同名变量优先于本文件**。
 
