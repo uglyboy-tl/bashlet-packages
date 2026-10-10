@@ -110,7 +110,7 @@ v2ex.search_url() {
 		return 1
 	}
 	browser.creds.check || {
-		log.error '本机直连 www.v2ex.com 不通，取主题需要 Cloudflare Browser Run 凭证（写进脚本同目录的 .env）'
+		log.error '直连 www.v2ex.com 不通：取主题需要代理（DIG_PROXY）或 Cloudflare Browser Run 凭证（写进脚本同目录的 .env）'
 		return 1
 	}
 	browser.page "https://www.v2ex.com/t/$id" | v2ex.map_topic "$id" | schema.pipe 0 | schema.limit 1

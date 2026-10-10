@@ -44,7 +44,7 @@ doctor.source() {
 doctor.hint() { # <不可达源数量>
 	local n="${1:-0}"
 	((n > 0)) || return 0
-	log.info "$n 个源不可达；若属本机 DNS 污染站点，设置 DIG_PROXY 或 https_proxy 后重跑"
+	log.info "$n 个源不可达；若属网络/DNS 不可达的站点，设置 DIG_PROXY 或 https_proxy 后重跑"
 }
 
 doctor.run() {
