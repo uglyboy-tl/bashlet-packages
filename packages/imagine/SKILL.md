@@ -1,6 +1,6 @@
 ---
 name: image-gen
-description: 命令行文生图 / 图生图，一套参数调用多家 provider（OpenAI、Google、DashScope、Z.AI、MiniMax、Doubao、Agnes、OpenRouter、Cloudflare）。当用户要求生成、绘制、创建图片，或给一张参考图改风格 / 保持身份改图时使用。
+description: 给用户出图:文生图 / 图生图,一套参数调用多家 provider。用户要求做配图 / 封面 / 插画 / logo / 头像,给参考图换风格或保持身份改图,或问哪家生图能用、key 配哪时用。
 license: MIT
 compatibility: 需要 bash 4.3+、curl、jq。脚本在 `scripts/imagine`（相对本文件目录）。
 metadata:
@@ -9,90 +9,65 @@ metadata:
 
 # image-gen
 
-用同一套参数调用多家文生图 API。脚本入口是 **`scripts/imagine`**（相对本 SKILL.md 所在目录）。
+把用户的一句话请求变成一条 `scripts/imagine` 调用,再把落盘路径报回用户。用户只管要什么(提示词、宽高比、参考图),
+各家接口差异由脚本映射;不支持的能力会报错或 warn,不会静默降级成另一个结果。
 
-核心原则：用户只表达想要什么（提示词、宽高比、参考图），各家接口差异由脚本映射，不支持的能力会明确提示或报错，而不是把参数丢给上游换回 400。
+## 流程
 
-## 快速开始
+1. 把请求补全成图像描述再调用:主体 + 场景 + 光线 + 风格 + 构图,一句话也行;用户给了原图就带 `--ref`。
+2. 定尺寸:用户说了比例就用 `--ar`(如 `16:9`);没说就按用途猜(封面 16:9、头像 / 图标 1:1、竖版 9:16)。不要自己算像素。
+3. 调用:不指定 `--provider`(脚本自动挑免费且凭证齐全的),加 `--json`,并显式给 `-o`,别让默认文件名落到 CWD。
+4. 报回:把 `files` 里的路径给用户;pi 里用 `read` 打开图片路径即可把图展示出来。
 
 ```bash
-scripts/imagine -p "a red apple on a wooden table"                  # 自动挑可用 provider
-scripts/imagine -p "..." --ar 16:9 -o out.png                       # 按宽高比
-scripts/imagine -p "..." --quality 2k -o out.png                    # 分辨率档位 normal|2k（默认 normal）
-scripts/imagine -p "..." --ref ref.png -o out.png                   # 图生图（参考图改风格）
-scripts/imagine -p "..." --provider dashscope -m qwen-image-plus -o out.png
-scripts/imagine --provider dashscope --extra parameters.prompt_extend=false -p "..." -o out.png
-scripts/imagine --json -p "..." -o out.png                          # 结果以 JSON 写到 stdout
-scripts/imagine providers                                           # 哪家能用（打只读端点验证 key）+ 缺什么
-scripts/imagine models [provider]                                   # 列默认模型 / 全部模型
-scripts/imagine update                                              # 手动刷新模型目录
+scripts/imagine -p "<prompt>" --ar 16:9 -o <out.png> --json
+scripts/imagine -p "<改什么>" --ref <原图> -o <out.png> --json
 ```
 
-先跑 `scripts/imagine providers`：它给每家打一个只读端点，直接告出哪家能用、哪家缺什么变量、不通的原因
-（墙外三家会提示配 `XGET_BASE_URL`）。不指定 `--provider` 时脚本自动选（免费优先：agnes → cloudflare → 其他），
-选谁也会印在表底。没网时加 `--offline` 只看配置。
+风格 / 比例不确定时,先按最合理的默认值出一张再让用户挑,不要为参数来回追问。
 
-## 选项
+## 提示词
+
+- **具体优于形容词堆砌**:「黄昏的木质桌面上一个红苹果,窗光从左侧来,浅景深」胜过「美丽的苹果,高质量,8k」。
+- **改图只写要改的部分**:换风格 / 换背景 / 换服装时用 `--ref` + 一句改动说明,不要重述整张图。
+- **要保持某个人或产品的身份时**:写明「以参考图中的主体为同一身份,不要重新设计或生成相似的新主体;只改场景、服装、姿势、光线与风格」,
+  并尽量给多张(2–4 张)同主体的参考图;只有一张也能用,先出图,再按「像不像」决定要不要补图重跑。反面做法是在提示词里长段描述五官——模型会照描述合成一个新的人。
+- **不要把参数写进提示词**(宽高比、分辨率、provider 名),那些交给旗标。
+- **图里要出现文字**:把文字原文用引号放进提示词,生成后逐字核对;有错字就换一家重试,或把提示词写短。
+
+## 参数
 
 | 选项 | 说明 |
 | --- | --- |
-| `-p, --prompt` | 提示词 |
-| `-P, --promptfile` | 从文件读提示词（与 `-p` 合并） |
-| `-o, --output` | 输出文件或目录（目录 / 省略时自动命名） |
-| `--provider` | 指定 provider；缺省自动选择 |
-| `-m, --model` | 模型 ID；优先级 `--model` > `<PROVIDER>_IMAGE_MODEL` > 模型目录 > 内置默认 |
-| `--ar` | 宽高比，如 `16:9`、`4:3`、`2.35:1` |
-| `-s, --size` | 显式尺寸，如 `1024x768`（优先于 `--ar`） |
-| `-q, --quality` | 分辨率档位 `normal`（默认）或 `2k` |
-| `-n, --count` | 生成数量（超过该 provider 上限会自动收敛并提示） |
-| `--seed` | 随机种子（整数） |
-| `--negative-prompt` | 负面提示词（部分 provider 支持） |
-| `--ref` | 参考图路径，多个用逗号分隔 |
-| `--style` | 风格预设（仅 OpenAI dall-e-3 等） |
-| `--extra k=v,...` | 透传 provider 特有参数，支持点号路径（如 `parameters.prompt_extend=false`） |
-| `--json` | 结果以 JSON 输出到 stdout（日志仍在 stderr） |
+| `-p` / `-P` | 提示词 / 从文件读提示词(与 `-p` 合并);长提示词写文件更稳 |
+| `-o` | 输出文件或目录;是目录或省略时自动命名 `<provider>_<时间戳>.png` |
+| `--ar` / `-s` | 宽高比 / 显式像素尺寸(优先) |
+| `-q` | `normal`(默认,短边约 1024)或 `2k`(长边 2048) |
+| `--ref` | 参考图,多张用逗号分隔 |
+| `-n` | 张数;超过该 provider 上限会自动收敛并提示,文件加 `_2`、`_3` 后缀 |
+| `--provider` / `-m` | 指定 provider / 模型;自动选择顺序是免费优先(agnes → cloudflare → 其他) |
+| `--json` | 结果输出一行 JSON 到 stdout,日志仍在 stderr |
 
-## 输出
+其余旗标(`--seed`、`--negative-prompt`、`--style`、`--extra` 透传)`scripts/imagine --help`;
+某家支不支持这些、支持多大的尺寸与几张参考图:`scripts/imagine providers --offline --caps`。
 
-- 普通模式：图片落盘，路径由 `-o` 决定；日志在 stderr。
-- `--json`：stdout 输出一行 JSON，便于脚本消费：
+## 输出契约
 
-```json
-{"ok":true,"provider":"agnes","model":"agnes-image-2.1-flash","requested_size":"1024x1024",
- "size":"1024x1024","aspect":"1:1","count":1,"attempts":1,"files":["/tmp/imj.png"]}
-```
+- `--json`:stdout 一行 `{"ok":true|false,"provider":...,"model":...,"size":...,"aspect":...,"files":[...]}`;失败加 `error` 字段,退出码非 0。
+- 不带 `--json` 时 stdout 为空,路径只在 stderr 的 `Saved:` 行——要拿路径就加 `--json`。
+- 日志与进度一律在 stderr;失败时脚本已删掉半成品文件。
+- `files` 里的路径才是产物:不要凭 `-o` 猜路径,也不要在上游报错后假设生成成功。
+- JSON 的 `size` 是**请求**尺寸;上游可能缩放(agnes 实测会把 1792x1024 出成 1312x736),要把真实像素告诉用户前先量一下(`file`)。
 
-失败时 `ok:false` 并带 `error` 字段，退出码非 0。日志一律走 stderr，stdout 只有 JSON。
-
-## 环境变量
-
-| 变量 | 用途 |
-| --- | --- |
-| `OPENAI_API_KEY` / `GOOGLE_API_KEY` / `DASHSCOPE_API_KEY` / `ZAI_API_KEY` / `MINIMAX_API_KEY` / `ARK_API_KEY` / `AGNES_API_KEY` / `OPENROUTER_API_KEY` | 各家 key |
-| `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` | Cloudflare Workers AI（两个） |
-| `<PROVIDER>_IMAGE_MODEL` | 逐家覆盖默认模型，如 `DASHSCOPE_IMAGE_MODEL=qwen-image-3.0-pro` |
-| `XGET_BASE_URL` | 代理 base（仅对声明了前缀的 provider 生效） |
-| `IMAGINE_TIMEOUT` | 请求超时秒数，默认 120 |
-| `IMAGINE_RETRY` | 可恢复失败的重试次数，默认 2（4xx 不重试） |
-| `IMAGINE_PROBE_TIMEOUT` | `providers` 探活超时秒数，默认 8 |
-| `IMAGINE_REGISTRY_URL` / `IMAGINE_REGISTRY_TTL_HOURS` / `IMAGINE_REGISTRY_OFF` | 模型目录源 / 刷新间隔 / 关闭回源 |
-
-凭证可放包目录 `.env`；注意 `.env` 会覆盖同名环境变量（需环境变量优先时，`.env` 内用 `: "${VAR:=...}"` 写法）。
-
-## 行为约定（给 agent）
-
-- **自动选 provider**：不指定时挑免费且凭证齐全的（agnes → cloudflare → 其他），不要手动硬编码 provider，除非用户指定。
-- **尺寸**：用 `--ar` 或 `-s`，不要自己换算像素；`size:fixed` 的 provider 会就近映射并 warn。
-- **图生图**：`--ref <path>`；不支持参考图的 provider 会直接报错，换一家或去掉 `--ref`。
-- **不支持的可选参数**（如某些家的 `--negative-prompt`/`--seed`）会 warn 后忽略，不用刻意规避。
-- **稳定性**：免费层有速率限制，偶发超时；脚本本身会重试 `IMAGINE_RETRY` 次，仍失败可稍后重跑。
-- **取结果文件**：优先用 `--json` 解析 `files`，不要靠读目录猜文件名。
-
-## 常见故障
+## 凭证与故障
 
 | 现象 | 处理 |
 | --- | --- |
-| `缺少凭证` / `没有可用的 provider` | 在环境或包目录 `.env` 里配对应的 key；先跑 `providers` |
-| `HTTP 4xx` | 参数或凭证问题，脚本不重试；看 stderr 的上游 message |
-| 超时 / 响应截断 | 免费层限流或网络抖动；脚本已重试，可调大 `IMAGINE_TIMEOUT` 后重跑 |
-| 落盘内容不是图片 | 上游返回错误页，已自动删除文件；重跑或换 provider |
+| 没有可用的 provider / 缺凭证 | `scripts/imagine providers` 打出每家缺哪个变量;让用户在 `scripts/.env` 补上再重跑 |
+| 4xx | 参数或凭证问题,脚本不重试;看 stderr 的上游 message 后改参数 |
+| 超时 / 响应截断 | 免费层限流或网络抖动;脚本已重试,可加大 `IMAGINE_TIMEOUT` 或稍后重跑 |
+| 落盘的不是图片 | 上游返回错误页,脚本已删掉文件;换一家重试 |
+| google / openai / openrouter 连不上 | 需要配 `XGET_BASE_URL` 走代理(只对这三家生效) |
+
+凭证来自环境变量或脚本目录的 `.env`;变量名是 `<PROVIDER>_API_KEY`(cloudflare 另需 `CLOUDFLARE_ACCOUNT_ID`)。
+用哪家、有哪些模型:`scripts/imagine models`。
