@@ -20,7 +20,7 @@ _save_version_info() {
 
 _download_file() {
 	local url
-	url=$(github.url.proxied "$1" "${SETTINGS_PROXY_PREFIX:-}")
+	url=$(github.url.insteadof "$1")
 	log.debug "[URL] $url"
 	requests.download "$url" "$2"
 }

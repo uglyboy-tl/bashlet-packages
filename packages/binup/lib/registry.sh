@@ -18,10 +18,10 @@ declare -ga REGISTRY_FIELDS=(repo version_type file_pattern file_extension binar
 declare -gA _REGISTRY_ENTRIES=()
 declare -g _REGISTRY_DUMP_URL=""
 
-# 包目录地址: 环境变量 > 本地配置；随后按代理前缀改写（GitHub 域名才改写）
+# 包目录地址: 环境变量 > 本地配置；随后按宿主机 git 的 insteadOf 改写为镜像地址
 registry_source() {
 	local url="${BINUP_REGISTRY_URL:-$(config.get registry_url)}"
-	github.url.proxied "$url" "${SETTINGS_PROXY_PREFIX:-}"
+	github.url.insteadof "$url"
 }
 
 # 保证包目录缓存可用且内容合法；缺 [packages.*] 段视为无效并丢弃缓存

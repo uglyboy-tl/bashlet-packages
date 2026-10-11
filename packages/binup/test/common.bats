@@ -28,6 +28,22 @@ setup() {
 	assert_output "lf-{os}-{arch}"
 }
 
+@test "common: github_token 优先取 gh，gh 无 token 时回退 pass" {
+	unset GITHUB_TOKEN
+	gh() { printf 'gh-token\n'; }
+	pass() { printf 'pass-token\n'; }
+
+	github_token
+	run printf '%s' "$GITHUB_TOKEN"
+	assert_output "gh-token"
+
+	gh() { return 1; }
+	unset GITHUB_TOKEN
+	github_token
+	run printf '%s' "$GITHUB_TOKEN"
+	assert_output "pass-token"
+}
+
 @test "common: 只把带 repo 的包算作已注册" {
 	printf '\n[packages.lf]\nrepo = "gokcehan/lf"\n\n[packages.empty]\nfile_extension = "tar.gz"\n' >> "$_CONFIG_PATH"
 	config.load "$_CONFIG_PATH"

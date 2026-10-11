@@ -30,7 +30,6 @@ import edit
 # 注册配置项、加载配置并设好全局设置变量（测试可单独调用，跳过 args 解析）
 init_settings() {
 	config.register "download_dir" "downloads" "string" "下载目录"
-	config.register "proxy_prefix" ""
 	config.register "log_level" "info"
 	config.register "registry_url" "$_DEFAULT_REGISTRY_URL" "string" "包目录 URL（可换成第三方源）"
 	config.register "registry_ttl" "24" "string" "包目录缓存有效期（小时）"
@@ -50,7 +49,6 @@ init_settings() {
 	main_config=$(config.path 2> /dev/null) || main_config=""
 	[[ -n $main_config && -f $main_config ]] && config.load "$main_config"
 	SETTINGS_DOWNLOAD_DIR="$(config.get "download_dir")"
-	SETTINGS_PROXY_PREFIX="$(config.get proxy_prefix)"
 	VERSIONS_FILE="$SETTINGS_DOWNLOAD_DIR/versions.toml"
 	config.load "$VERSIONS_FILE" 2> /dev/null || true
 	log.setLevel "$(config.get log_level)"

@@ -7,6 +7,8 @@ _binup_setup() {
 	cd "$PROJECT_ROOT"
 	export GITHUB_TOKEN=dummy
 	unset BINUP_REGISTRY_URL
+	# 隔离宿主机的 git 镜像映射：否则 ext/github 会读 url.<base>.insteadOf，用例结果随开发机变化
+	export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
 	export _CONFIG_PATH="$BATS_TEST_TMPDIR/config.toml"
 	printf 'download_dir = "%s/dl"\nlog_level = "info"\n' "$BATS_TEST_TMPDIR" > "$_CONFIG_PATH"
 	mkdir -p "$BATS_TEST_TMPDIR/dl"

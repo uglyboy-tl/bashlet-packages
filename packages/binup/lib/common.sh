@@ -22,9 +22,11 @@ package_reset_cache() {
 	_DEFAULT_PACKAGES_LOADED=false
 }
 
-# 惰性取 GitHub token：只有真正要访问 GitHub 时才调 pass，
-# 避免每次启动（含 --version）都执行一次外部命令。
+# 惰性取 GitHub token：只有真正要访问 GitHub 时才调外部命令，
+# 避免每次启动（含 --version）都执行一次。来源优先级：环境变量 > gh > pass。
 github_token() {
+	[[ -n ${GITHUB_TOKEN:-} ]] && return 0
+	GITHUB_TOKEN=$(gh auth token 2> /dev/null) || GITHUB_TOKEN=""
 	[[ -n ${GITHUB_TOKEN:-} ]] && return 0
 	GITHUB_TOKEN=$(pass "github" 2> /dev/null) || GITHUB_TOKEN=""
 	return 0

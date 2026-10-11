@@ -26,13 +26,22 @@ binup edit                      # 编辑配置文件（$EDITOR，默认 vi）
 
 包定义字段：`repo`（唯一必需，缺了不算已注册）、`version_type`（默认 `release`）、`file_pattern`（支持 `{os}` / `{arch}` 与 `*` / `?`）、`file_extension`、`binary_name`。
 
+下载与包目录的 GitHub 地址按宿主机 `git config --get-regexp 'url\..*\.insteadOf'` 改写（读 git 命令而非配置文件，`include` 也生效），
+所以 git 里配过镜像就不必再为 binup 单独配一遍：
+
+```ini
+[url "https://gh-proxy.com/https://github.com/"]
+	insteadOf = https://github.com/
+```
+
+映射范围由你的 git config 决定，想连 raw 域名也走镜像就再配一条 `https://raw.githubusercontent.com/` 的映射。API 请求（带 token 的那个）从不经过镜像。
+
 ## 环境变量
 
 | 变量 | 用途 |
 | --- | --- |
-| `GITHUB_TOKEN` | GitHub API token；未设置时尝试从 `pass "github"` 读 |
+| `GITHUB_TOKEN` | GitHub API token；未设置时依次尝试 `gh auth token`、`pass "github"` |
 | `BINUP_REGISTRY_URL` | 覆盖远端包目录 URL（优先于配置） |
-| `SETTINGS_PROXY_PREFIX` | 给 GitHub 直链加代理前缀（也可写进配置的 `proxy_prefix`） |
 | `EDITOR` | `binup edit` 用的编辑器，默认 `vi` |
 
 ## 开发

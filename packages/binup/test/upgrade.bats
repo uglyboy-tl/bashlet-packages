@@ -8,31 +8,22 @@ setup() {
 	SETTINGS_DOWNLOAD_DIR="$BATS_TEST_TMPDIR/dl"
 }
 
-@test "upgrade: _download_file 把 GitHub 直链改写成代理 URL" {
+@test "upgrade: _download_file 无 git 映射时原样下载" {
 	log.setLevel ERROR
-	SETTINGS_PROXY_PREFIX="https://proxy.example/gh/"
-	requests.download() { printf '%s\n' "$1"; }
-
-	run _download_file "https://github.com/a/b/releases/download/v1/x.tar.gz" /tmp/x
-	assert_output "https://proxy.example/gh/a/b/releases/download/v1/x.tar.gz"
-}
-
-@test "upgrade: _download_file 把 raw 直链也走代理" {
-	log.setLevel ERROR
-	SETTINGS_PROXY_PREFIX="https://proxy.example/gh/"
-	requests.download() { printf '%s\n' "$1"; }
-
-	run _download_file "https://raw.githubusercontent.com/a/b/main/x.toml" /tmp/x
-	assert_output "https://proxy.example/gh/a/b/raw/main/x.toml"
-}
-
-@test "upgrade: _download_file 未配代理时原样下载" {
-	log.setLevel ERROR
-	SETTINGS_PROXY_PREFIX=""
 	requests.download() { printf '%s\n' "$1"; }
 
 	run _download_file "https://github.com/a/b/releases/download/v1/x.tar.gz" /tmp/x
 	assert_output "https://github.com/a/b/releases/download/v1/x.tar.gz"
+}
+
+@test "upgrade: 用宿主机 git 的 insteadOf 改写下载地址" {
+	log.setLevel ERROR
+	printf '[url "https://gh-proxy.com/https://github.com/"]\n\tinsteadOf = https://github.com/\n' > "$BATS_TEST_TMPDIR/gitconfig"
+	export GIT_CONFIG_GLOBAL="$BATS_TEST_TMPDIR/gitconfig"
+	requests.download() { printf '%s\n' "$1"; }
+
+	run _download_file "https://github.com/a/b/releases/download/v1/x.tar.gz" /tmp/x
+	assert_output "https://gh-proxy.com/https://github.com/a/b/releases/download/v1/x.tar.gz"
 }
 
 @test "upgrade: _save_version_info 写入 current_version" {
