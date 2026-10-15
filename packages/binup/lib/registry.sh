@@ -95,7 +95,9 @@ registry_names() {
 # 读取单个字段, 不存在时输出空
 registry_get() {
 	registry_load "$1"
-	[[ -v "_REGISTRY_ENTRIES[packages.$2.$3]" ]] && printf '%s\n' "${_REGISTRY_ENTRIES[packages.$2.$3]}"
+	# 下标经局部变量传入：shfmt 直接把 packages.$2.$3 写在 ${...[…] } 里会当成算术里的浮点数而拒绝解析
+	local key="packages.$2.$3"
+	[[ -v "_REGISTRY_ENTRIES[$key]" ]] && printf '%s\n' "${_REGISTRY_ENTRIES[$key]}"
 	return 0
 }
 
