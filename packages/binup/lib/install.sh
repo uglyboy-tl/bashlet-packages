@@ -3,6 +3,7 @@
 
 import core/args
 import core/log
+import core/config.persist
 import std/fs
 import std/console
 import std/console.layout
@@ -31,6 +32,16 @@ _install_archive() {
 	[[ ${#no_ext_files[@]} -eq 1 ]] && chmod +x "${no_ext_files[0]}"
 
 	mapfile -d '' -t binary_files < <(find "$work_dir" -type f -executable ! -name "*.*" -print0 2> /dev/null)
+	# 单文件压缩包（.gz/.bz2/.xz，如 restic）解出来的是裸二进制：名字带版本号的点、又没有执行位，
+	# 上面的启发式认不出来。按 fs.file.extract 的命名规则（剥掉压缩后缀）把它找回来。
+	# .tar.gz 也命中这个正则，但 fs.file.extract 走的是 tar 分支、不会产生同名文件，-f 判断自然挡掉。
+	if ((${#binary_files[@]} == 0)) && [[ $filename =~ \.(gz|bz2|xz)$ ]]; then
+		local decompressed="$work_dir/${filename%.*}"
+		if [[ -f $decompressed ]]; then
+			chmod +x "$decompressed"
+			binary_files=("$decompressed")
+		fi
+	fi
 	binary_count=${#binary_files[@]}
 	((binary_count == 0)) && {
 		log.warn "$package: 未找到可执行文件"
@@ -91,6 +102,12 @@ _do_install_package() {
 	_install_archive "$package" "$archive_file" "$filename" "$binary_name" "$install_dir" "$work_dir"
 	rc=$?
 	rm -rf "$work_dir"
+	if ((rc != 0)); then
+		# 装失败就不能留着 current_version：否则 `upgrade` 会认为已装好而跳过，
+		# 坏归档永远修不回来（清掉后重跑 upgrade 才会重新下载）
+		config.persist.update "packages" "$package" "current_version" "" "$VERSIONS_FILE"
+		console.layout.item.title 1 "$package: 已清除版本记录，重跑 \`$_USAGE_SCRIPT_FILENAME upgrade\` 会重新下载"
+	fi
 	return $rc
 }
 
