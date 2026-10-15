@@ -19,7 +19,7 @@ description = "开源 AI 编码代理"
 
 [packages.uv]
 repo = "astral-sh/uv"
-file_pattern = "uv-{arch}-unknown-{os}-gnu"
+file_pattern = "uv-{arch}-unknown-{os}{libc}"
 file_extension = "tar.gz"
 description = "极快的 Python 包与项目管理器（Rust）"
 
@@ -31,7 +31,7 @@ description = "一体化 JavaScript 运行时 / 打包器 / 测试器 / 包管�
 
 [packages.rtk]
 repo = "rtk-ai/rtk"
-file_pattern = "rtk-{arch}-unknown-{os}-musl"
+file_pattern = "rtk-{arch}-unknown-{os}{libc}"
 file_extension = "tar.gz"
 description = "CLI 代理：把常见开发命令的 LLM token 消耗降低 60-90%"
 
@@ -59,3 +59,226 @@ repo = "raskrebs/sonar"
 file_pattern = "sonar_{os}_{arch}"
 file_extension = "tar.gz"
 description = "查看和管理本机监听端口的 CLI 工具"
+
+[packages.atuin]
+repo = "atuinsh/atuin"
+file_pattern = "atuin-{arch}-unknown-{os}{libc}"
+file_extension = "tar.gz"
+description = "跨 shell 的命令历史管理，可选同步与加密"
+
+[packages.bat]
+repo = "sharkdp/bat"
+file_pattern = "bat-v*-{arch}-unknown-{os}{libc}"
+file_extension = "tar.gz"
+description = "带语法高亮的 cat 替代"
+
+[packages.bottom]
+repo = "ClementTsang/bottom"
+file_pattern = "bottom_{arch}-unknown-{os}{libc}"
+file_extension = "tar.gz"
+description = "跨平台终端系统监控（btm）"
+
+[packages.btop]
+repo = "aristocratos/btop"
+file_pattern = "btop-{arch}-unknown-{os}{libc}"
+file_extension = "tar.gz"
+description = "资源监控器（CPU / 内存 / 磁盘 / 网络）"
+
+[packages.delta]
+repo = "dandavison/delta"
+file_pattern = "delta-*-{arch}-unknown-{os}{libc}"
+file_extension = "tar.gz"
+description = "git diff 的语法高亮分页器（Debian 同名 delta 包是另一个无关工具）"
+
+[packages.dust]
+repo = "bootandy/dust"
+file_pattern = "dust-v*-{arch}-unknown-{os}{libc}"
+file_extension = "tar.gz"
+description = "du 的可视化替代"
+
+[packages.eza]
+repo = "eza-community/eza"
+file_pattern = "eza_{arch}-unknown-{os}{libc}"
+file_extension = "tar.gz"
+description = "现代 ls 替代"
+
+[packages.fastfetch]
+repo = "fastfetch-cli/fastfetch"
+file_pattern = "fastfetch-{os}-{arch}"
+file_extension = "tar.gz"
+description = "系统信息展示工具（neofetch 替代）"
+
+[packages.fd]
+repo = "sharkdp/fd"
+file_pattern = "fd-v*-{arch}-unknown-{os}{libc}"
+file_extension = "tar.gz"
+description = "更快的 find 替代"
+
+[packages.frp]
+repo = "fatedier/frp"
+file_pattern = "frp_*_{os}_{arch}"
+file_extension = "tar.gz"
+description = "内网穿透（frpc / frps）"
+
+[packages.fzf]
+repo = "junegunn/fzf"
+file_pattern = "fzf-*-{os}_{arch}"
+file_extension = "tar.gz"
+description = "命令行模糊查找器"
+
+[packages.gh]
+repo = "cli/cli"
+file_pattern = "gh_*_{os}_{arch}"
+file_extension = "tar.gz"
+description = "GitHub 官方命令行客户端"
+
+[packages.gitui]
+repo = "gitui-org/gitui"
+file_pattern = "gitui-{os}-{arch}"
+file_extension = "tar.gz"
+description = "git 的终端 UI（Rust）"
+
+[packages.glow]
+repo = "charmbracelet/glow"
+file_pattern = "glow_*_{os}_{arch}"
+file_extension = "tar.gz"
+description = "终端 Markdown 渲染与阅读器"
+
+[packages.gum]
+repo = "charmbracelet/gum"
+file_pattern = "gum_*_{os}_{arch}"
+file_extension = "tar.gz"
+description = "Shell 脚本的 UI 组件工具集"
+
+[packages.herdr]
+repo = "herdrdev/herdr"
+file_pattern = "herdr-{os}-{arch}"
+binary_name = "herdr"
+description = "编码 agent 的终端运行时（工作区 / 窗格 / agent 编排）"
+
+[packages.hugo]
+repo = "gohugoio/hugo"
+file_pattern = "hugo_*_{os}-{arch}"
+file_extension = "tar.gz"
+description = "静态网站生成器（基础版）"
+
+[packages.hugo-extended]
+repo = "gohugoio/hugo"
+file_pattern = "hugo_extended_*_{os}-{arch}"
+file_extension = "tar.gz"
+description = "静态网站生成器（扩展版，支持 SCSS / WebP，多数主题需要）"
+
+[packages.hyperfine]
+repo = "sharkdp/hyperfine"
+file_pattern = "hyperfine-v*-{arch}-unknown-{os}{libc}"
+file_extension = "tar.gz"
+description = "命令行基准测试工具"
+
+[packages.just]
+repo = "casey/just"
+file_pattern = "just-*-{arch}-unknown-{os}{libc}"
+file_extension = "tar.gz"
+description = "命令运行器（Makefile 替代）"
+
+[packages.lazydocker]
+repo = "jesseduffield/lazydocker"
+file_pattern = "lazydocker_*_{os}_{arch}"
+file_extension = "tar.gz"
+description = "docker / compose 的终端 UI"
+
+[packages.lazygit]
+repo = "jesseduffield/lazygit"
+file_pattern = "lazygit_*_{os}_{arch}"
+file_extension = "tar.gz"
+description = "git 的终端 UI"
+
+[packages.mc]
+repo = "minio/mc"
+file_pattern = "mc.{os}-{arch}.*"
+binary_name = "mc"
+description = "MinIO / S3 兼容对象存储的客户端（上游仓库已归档，不会再更新）"
+
+[packages.oh-my-posh]
+repo = "JanDeDobbeleer/oh-my-posh"
+file_pattern = "posh-{os}-{arch}"
+binary_name = "oh-my-posh"
+description = "可定制的 shell 提示符引擎"
+
+[packages.procs]
+repo = "dalance/procs"
+file_pattern = "procs-v*-{arch}-{os}"
+file_extension = "zip"
+description = "现代 ps 替代（Rust）"
+
+[packages.rclone]
+repo = "rclone/rclone"
+file_pattern = "rclone-v*-{os}-{arch}"
+file_extension = "zip"
+description = "云存储同步与挂载（40+ 后端）"
+
+[packages.restic]
+repo = "restic/restic"
+file_pattern = "restic_*_{os}_{arch}"
+file_extension = "bz2"
+binary_name = "restic"
+description = "加密去重的备份工具（本地 / S3 / B2 / SFTP 等后端）"
+
+[packages.ripgrep]
+repo = "BurntSushi/ripgrep"
+file_pattern = "ripgrep-*-{arch}-unknown-{os}{libc}"
+file_extension = "tar.gz"
+description = "递归搜索工具（rg），grep 的更快替代"
+
+[packages.ruff]
+repo = "astral-sh/ruff"
+file_pattern = "ruff-{arch}-unknown-{os}{libc}"
+file_extension = "tar.gz"
+description = "极快的 Python linter 与格式化器"
+
+[packages.sd]
+repo = "chmln/sd"
+file_pattern = "sd-v*-{arch}-unknown-{os}{libc}"
+file_extension = "tar.gz"
+description = "更直观的 sed 替代"
+
+[packages.shfmt]
+repo = "mvdan/sh"
+file_pattern = "shfmt_v*_{os}_{arch}"
+binary_name = "shfmt"
+description = "Shell 脚本格式化工具"
+
+[packages.sing-box]
+repo = "SagerNet/sing-box"
+file_pattern = "sing-box-*-{os}-{arch}"
+file_extension = "tar.gz"
+description = "通用代理平台"
+
+[packages.starship]
+repo = "starship/starship"
+file_pattern = "starship-{arch}-unknown-{os}{libc}"
+file_extension = "tar.gz"
+description = "跨 shell 的极快提示符"
+
+[packages.xh]
+repo = "ducaale/xh"
+file_pattern = "xh-v*-{arch}-unknown-{os}{libc}"
+file_extension = "tar.gz"
+description = "友好的 HTTP 客户端（httpie 替代）"
+
+[packages.yazi]
+repo = "sxyazi/yazi"
+file_pattern = "yazi-{arch}-unknown-{os}{libc}"
+file_extension = "zip"
+description = "极快的终端文件管理器（Rust）"
+
+[packages.zellij]
+repo = "zellij-org/zellij"
+file_pattern = "zellij-{arch}-unknown-{os}{libc}"
+file_extension = "tar.gz"
+description = "终端工作区与复用器"
+
+[packages.zoxide]
+repo = "ajeetdsouza/zoxide"
+file_pattern = "zoxide-*-{arch}-unknown-{os}{libc}"
+file_extension = "tar.gz"
+description = "智能 cd 命令（z）"
