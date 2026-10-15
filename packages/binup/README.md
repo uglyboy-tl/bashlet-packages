@@ -2,6 +2,7 @@
 
 命令行程序的下载管理器（v2.3.0）：从 GitHub release 检查更新、下载二进制归档、备份旧版、解压安装。
 安装目录优先 `/usr/local/bin`（可写时），否则 `~/.local/bin`。
+**仅支持 Linux**：包目录的资产匹配按 `{os}` 展开，registry 只收 Linux 资产；脚本本身还依赖 bash 4+（`mapfile`）与 GNU 工具（`stat -c` / `sed -i` / `readlink -f`）。
 
 ## 用法
 
@@ -31,6 +32,7 @@ binup edit                      # 编辑配置文件（$EDITOR，默认 vi）
 `{libc}` 是 libc/ABI 风味占位符，自带前导 `-` 且整体可选，用于容忍上游按架构发不同风味（`-gnu` / `-gnueabihf` / `-musl` / `-musleabihf` / `-musleabi` / `-glibc` / `-softfloat`）或干脆不带风味。写成 `uv-{arch}-unknown-{os}{libc}` 而不是写死 `-gnu`——写死会在上游换风味时静默失效。
 
 **收录门槛**：归档必须是单文件可执行，或几个各自独立可用的二进制（`uv`+`uvx`、`frpc`+`frps`、`yazi`+`ya`）；单文件压缩包（`.gz` / `.bz2` / `.xz`，如 restic）也算，但**必须配 `binary_name`**。
+多个可执行文件时 `binary_name` 兼作筛选：只装名字等于它的那一个（如 wordcraft 的 GUI + CLI 同包，只取 CLI），没命中则退回「各按原名装」。
 `install` 只把解压后「可执行且文件名不含点」的文件拷进安装目录，**依赖同级目录才能跑的包不能收**：
 neovim 只拷 `bin/nvim` 会报 `E484: Can't open file /usr/local/share/nvim/syntax/syntax.vim`（runtime 在归档的 `share/nvim/`），
 helix 只拷 `hx` 会报 `Runtime directory does not exist`（靠同级 `runtime/`）。
@@ -57,7 +59,7 @@ helix 只拷 `hx` 会报 `Runtime directory does not exist`（靠同级 `runtime
 ## 开发
 
 ```bash
-tools/test binup      # 39 条用例（test/ 下 10 个 .bats）
+tools/test binup      # 45 条用例（test/ 下 10 个 .bats）
 tools/build binup     # 产出 packages/binup/build/binup
 ```
 

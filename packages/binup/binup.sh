@@ -15,6 +15,7 @@ _DEFAULT_REGISTRY_URL="https://github.com/uglyboy-tl/bashlet-packages/raw/HEAD/p
 import core/log
 import core/args
 import core/config
+import std/system
 import ext/requests
 
 import common
@@ -73,6 +74,12 @@ main() {
 	args.add_subcommand "edit" "编辑配置文件" "cmd_edit"
 
 	init_settings
+
+	# 包目录的资产匹配按 {os} 展开，registry 只收 Linux 资产；非 Linux 上直接说清限制
+	if [[ $(system.os) != linux ]]; then
+		log.warn "BinUp 目前只支持 Linux（当前系统：$(system.os)），资产匹配与安装可能失败"
+	fi
+
 	args.process "$@"
 	args.has "-v" "--version" && usage.version && exit 0
 }
