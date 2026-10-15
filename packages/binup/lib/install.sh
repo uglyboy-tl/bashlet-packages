@@ -43,6 +43,18 @@ _install_archive() {
 		fi
 	fi
 	binary_count=${#binary_files[@]}
+	# binary_name 命中归档里某个可执行文件时只装那一个（如 wordcraft 的 GUI + CLI 同包）；
+	# 没命中就保持原行为（多个各按原名装），不会静默装出空目录。
+	if ((binary_count > 1)) && [[ -n $binary_name ]]; then
+		local -a picked=()
+		for binary_file in "${binary_files[@]}"; do
+			[[ $(basename "$binary_file") == "$binary_name" ]] && picked+=("$binary_file")
+		done
+		if ((${#picked[@]} > 0)); then
+			binary_files=("${picked[@]}")
+			binary_count=${#picked[@]}
+		fi
+	fi
 	((binary_count == 0)) && {
 		log.warn "$package: 未找到可执行文件"
 		return 1
@@ -55,9 +67,12 @@ _install_archive() {
 			target_file="$install_dir/$(basename "$binary_file")"
 		fi
 		console.layout.item.item "[安装] 到 $target_file"
-		if cp "$binary_file" "$target_file" 2> /dev/null; then
+		# 经 .tmp + mv：目标若是符号链接（uv / npm / asdf 装的），mv 换掉链接本身，
+		# 不会像 cp 那样穿透过去覆盖原管理器的文件；也避免失败时留下半个文件。
+		if cp "$binary_file" "$target_file.tmp" 2> /dev/null && mv -f "$target_file.tmp" "$target_file" 2> /dev/null; then
 			((installed_count++)) || true
 		else
+			rm -f "$target_file.tmp"
 			name="$(basename "$binary_file")"
 			log.warn "$name: 复制失败"
 			failed_packages+=("$name")
