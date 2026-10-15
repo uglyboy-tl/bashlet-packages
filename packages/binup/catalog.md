@@ -16,6 +16,7 @@
 | hyperfine | 命令行基准测试工具 |
 | opencode | 开源 AI 编码代理 |
 | rtk | CLI 代理：把常见开发命令的 LLM token 消耗降低 60-90% |
+| llmfit | 按本机硬件筛选能跑的模型 |
 
 ## 文件、搜索与文本
 
@@ -32,6 +33,8 @@
 | dust | du 的可视化替代 |
 | yq | YAML / JSON / XML / CSV / TOML / HCL 命令行处理器 |
 | zoxide | 智能 cd 命令（z） |
+| officecli | 面向 AI agent 的 Office 文档读写 CLI（.docx / .xlsx / .pptx） |
+| wordcraft | Word 文档转换与检查 CLI（docx / pdf / odt / md / tex 互转；上游同包还带 GUI，只装 CLI） |
 
 ## Git、容器与代码托管
 
@@ -52,6 +55,7 @@
 | procs | 现代 ps 替代（Rust） |
 | sonar | 查看和管理本机监听端口的 CLI 工具 |
 | fastfetch | 系统信息展示工具（neofetch 替代） |
+| witr | 追踪进程 / 端口 / 容器 / 文件由谁启动（CLI + TUI） |
 
 ## 终端体验与复用
 

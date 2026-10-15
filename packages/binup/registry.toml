@@ -192,11 +192,24 @@ file_pattern = "lazygit_*_{os}_{arch}"
 file_extension = "tar.gz"
 description = "git 的终端 UI"
 
+[packages.llmfit]
+repo = "AlexsJones/llmfit"
+file_pattern = "llmfit-v*-{arch}-unknown-{os}{libc}"
+file_extension = "tar.gz"
+binary_name = "llmfit"
+description = "按本机硬件筛选能跑的模型"
+
 [packages.mc]
 repo = "minio/mc"
 file_pattern = "mc.{os}-{arch}.*"
 binary_name = "mc"
 description = "MinIO / S3 兼容对象存储的客户端（上游仓库已归档，不会再更新）"
+
+[packages.officecli]
+repo = "iOfficeAI/OfficeCLI"
+file_pattern = "officecli-{os}-{arch}"
+binary_name = "officecli"
+description = "面向 AI agent 的 Office 文档读写 CLI（.docx / .xlsx / .pptx）"
 
 [packages.oh-my-posh]
 repo = "JanDeDobbeleer/oh-my-posh"
@@ -258,6 +271,19 @@ repo = "starship/starship"
 file_pattern = "starship-{arch}-unknown-{os}{libc}"
 file_extension = "tar.gz"
 description = "跨 shell 的极快提示符"
+
+[packages.witr]
+repo = "pranshuparmar/witr"
+file_pattern = "witr-{os}-{arch}"
+binary_name = "witr"
+description = "追踪进程 / 端口 / 容器 / 文件由谁启动（CLI + TUI）"
+
+[packages.wordcraft]
+repo = "storytold/wordcraft"
+file_pattern = "wordcraft-*-{os}-{arch}"
+file_extension = "tar.gz"
+binary_name = "wordcraft-cli"
+description = "Word 文档转换与检查 CLI（docx / pdf / odt / md / tex 互转；上游同包还带 GUI，只装 CLI）"
 
 [packages.xh]
 repo = "ducaale/xh"
