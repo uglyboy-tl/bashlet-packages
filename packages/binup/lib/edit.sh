@@ -34,7 +34,7 @@ _create_default_config() {
 # 每个包声明在 [packages.<名称>] 段中:
 #   repo           = "owner/repo"           # GitHub 仓库
 #   version_type   = "release"              # release(默认) | 其他(取 releases 列表首个)
-#   file_pattern   = "<名称>-{os}-{arch}*"  # 占位符 {os}/{arch};支持 * 与 ?
+#   file_pattern   = "<名称>-{os}-{arch}*"  # 占位符 {os}/{arch}/{libc};支持 * 与 ?
 #   file_extension = "tar.gz"               # 归档扩展名(可省略)
 #   binary_name    = "<名称>"               # 归档内可执行文件名(单文件时可省略)
 download_dir = "downloads"

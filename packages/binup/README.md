@@ -17,6 +17,8 @@ binup edit                      # 编辑配置文件（$EDITOR，默认 vi）
 
 端到端：`binup search <关键词>` → `binup add <包名>` → `binup update && binup upgrade <包名> && binup install <包名>`。
 
+包目录里有哪些包、按用途怎么分：见 [`catalog.md`](catalog.md)。
+
 步骤分开是为了让你在 `update` 与 `upgrade` 之间看到版本变化，并在 `install` 前拿到归档（`download_dir`，默认为包内 `downloads/`）。
 
 ## 配置
@@ -24,7 +26,15 @@ binup edit                      # 编辑配置文件（$EDITOR，默认 vi）
 包目录默认从远端拉取（`registry_url`，缓存 `registry_ttl` 小时），可用 `BINUP_REGISTRY_URL` 覆盖成自己的源。
 本地落两份文件：`config.toml`（包声明）与 `versions.toml`（`current_version` / `latest_version` / `download_url`，由 `update` 写）。
 
-包定义字段：`repo`（唯一必需，缺了不算已注册）、`version_type`（默认 `release`）、`file_pattern`（支持 `{os}` / `{arch}` 与 `*` / `?`）、`file_extension`、`binary_name`。
+包定义字段：`repo`（唯一必需，缺了不算已注册）、`version_type`（默认 `release`）、`file_pattern`（支持 `{os}` / `{arch}` / `{libc}` 与 `*` / `?`）、`file_extension`、`binary_name`。
+
+`{libc}` 是 libc/ABI 风味占位符，自带前导 `-` 且整体可选，用于容忍上游按架构发不同风味（`-gnu` / `-gnueabihf` / `-musl` / `-musleabihf` / `-musleabi` / `-glibc` / `-softfloat`）或干脆不带风味。写成 `uv-{arch}-unknown-{os}{libc}` 而不是写死 `-gnu`——写死会在上游换风味时静默失效。
+
+**收录门槛**：归档必须是单文件可执行，或几个各自独立可用的二进制（`uv`+`uvx`、`frpc`+`frps`、`yazi`+`ya`）；单文件压缩包（`.gz` / `.bz2` / `.xz`，如 restic）也算，但**必须配 `binary_name`**。
+`install` 只把解压后「可执行且文件名不含点」的文件拷进安装目录，**依赖同级目录才能跑的包不能收**：
+neovim 只拷 `bin/nvim` 会报 `E484: Can't open file /usr/local/share/nvim/syntax/syntax.vim`（runtime 在归档的 `share/nvim/`），
+helix 只拷 `hx` 会报 `Runtime directory does not exist`（靠同级 `runtime/`）。
+自检：解压后按上面那条 `find` 规则列出会被拷的文件，单独放进空目录里跑一次 `--version`。
 
 下载与包目录的 GitHub 地址按宿主机 `git config --get-regexp 'url\..*\.insteadOf'` 改写（读 git 命令而非配置文件，`include` 也生效），
 所以 git 里配过镜像就不必再为 binup 单独配一遍：
