@@ -207,7 +207,7 @@ https://api.smartrecruiters.com/v1/companies/SLUG/postings
 | **Invidious / Piped** | 测了 5 个 Invidious + 4 个 Piped 实例，**全部 DNS 可解析但连接失败（000）**；且依赖第三方，与 dig 原则不符 |
 | **GitLab** | `gitlab.com/api/v4/projects?search=` 免密钥可用，但绝大多数开源在 GitHub，边际价值低 |
 | **npm / PyPI 下载量** | 实测可用（`api.npmjs.org/downloads/point/last-month/react`、`pypistats.org/api/packages/x/recent`），是「这个库真的被用吗」的信号，但不是讨论型载体，暂不单独立源 |
-| **小红书 / 微博 / 抖音** | 卡在 `x-s` / `x-t` / `x-rap-param` 等 JS 签名，纯 Bash 无解（见 `sources.md` 第 4 节） |
+| **小红书 / 微博 / 抖音** | 卡在 `x-s` / `x-t` / `x-rap-param` 等 JS 签名，纯 Bash 无解（见 `sources.md` 第 4 节）；**小红书另有展开的方案与风险评估，见第 8 节** |
 | **豆瓣** | 见 `sources.md` 第 4 节：免密钥端点静默限流，且增量是书目元数据而非讨论 |
 | **微信公众号** | 本机 curl 拿不到（302 滑块验证）；**已接**：走云端浏览器只按 URL 取正文 —— 见第 7 节 |
 
@@ -277,3 +277,143 @@ https://api.smartrecruiters.com/v1/companies/SLUG/postings
 - 默认**不**给「认不出的 URL」兜底：`DIG_FETCH_FALLBACK=1` 才开——否则 dig 就从「按站点取数」
   漂成「通用抓取器」，「取不到就取不到」那条边界就没了。
 - 早期的评估探针（`packages/dig/experiments/cloudflare-probe.sh`）已删，逻辑落在上面两个文件里。
+
+## 8. 小红书 —— 免登录已无路，只剩「花钱」或「借你的浏览器」
+
+`sources.md` 第 4 节给了「纯 Bash 无解」的结论与三条出路，本节是它的展开：实测拦截层次、
+签名攻防的时间线、风险评估（**封 IP 与封号要分开看**）、以及每条路的维护成本。
+
+**结论先行**：想在不冒封号风险的前提下把小红书当日常信息源，只有两条路——
+付 `$0.01/次` 买第三方 API（风险在服务商侧，不在你的账号），
+或用**你自己浏览器的登录态**做只读抓取（零成本，但要长期跟维护）。纯 HTTP 自建签名是风险最高的一条。
+
+### 8.1 拦截层次（实测 2026-10-11）
+
+这五条请求说明了「门槛到底在哪」，可直接复现：
+
+| 请求 | 结果 | 含义 |
+| --- | --- | --- |
+| `GET www.xiaohongshu.com/explore` | `302 → /login?redirectPath=…` | Web 端**整站登录墙** |
+| `POST edith.xiaohongshu.com/api/sns/web/v1/search/notes`（无签名无 cookie） | `200 {"code":-101,"msg":"无登录信息，或登录信息为空"}` | **登录检查在签名检查之前** |
+| `POST …/api/sns/web/v1/homefeed`（无签名） | `406 {"code":-1}` | 签名层直接拒 |
+| `GET /explore/<id>?xsec_token=<已过期>` | `302 → /404/…?error_code=300031&error_msg=当前笔记暂时无法浏览` | 分享链接的 `xsec_token` 有时效，过期即风控页 |
+| `GET www.rednote.com/explore` | `302 → /login` | 国际版同样登录墙 |
+
+复现命令：
+
+```bash
+curl -s -o /dev/null -w '%{http_code} -> %{redirect_url}\n' https://www.xiaohongshu.com/explore
+curl -s -X POST 'https://edith.xiaohongshu.com/api/sns/web/v1/search/notes' \
+  -H 'content-type: application/json' --data '{"keyword":"咖啡","page":1}'
+```
+
+### 8.2 官方开放平台：与「内容检索」无关
+
+`openaccount.xiaohongshu.com` 现在是纯 OAuth 登录平台，API 参考（官方，2026-08-19 更新）的
+11 个接口全是授权链路（`auth_info` / `authorize` / `access_token` / `refresh_token` / `token_status` /
+`batch_get_min_user_info` / `auth_app/*` / `device/*` / `revoke`），返回数据最多到「昵称、头像、性别、地区」。
+
+**没有任何笔记 / 搜索 / 评论类接口。** 中文社区里写「申请开放平台就能调笔记详情 API」的文章
+把「OAuth 登录能力」和「商业侧接口（蒲公英 / 千帆 / 小程序）」混为一谈，无官方文档支撑，不要采信。
+（企业资质门槛另见 `sources.md` 第 4 节。）
+
+### 8.3 签名能算，但风控已从「认签名」转向「认账号」
+
+纯 Python 生成签名是成熟的：`Cloxl/xhshow`（push 2026-06-11，1088★）提供
+`sign_headers_get/post`、`x_rap_param`、`get_search_id`、`generate_a1`、`generate_web_id`；
+MediaCrawler 2026-07-24 的提交就是「升级 xhshow 至 0.2.0」——它至今是社区主力实现。
+
+**但「有签名」不等于「能用」**，时间线（全部一手 issue）：
+
+| 时间 | 事件 |
+| --- | --- |
+| 2025-10-26 | 签名算法整体失效，「能在 API 层面直接识别旧算法生成的 `x-s` / `x-t`」 |
+| 2025-10-28 | 签名修好后仍 `406`，紧接着 `461 {'code': 300011, 'msg': '检测到账号异常'}` |
+| 2026-03-31 | `user_posted` 端点签名自 2025-11 起一直有问题，「暂无可靠修复方案」 |
+| 2026-06-12 | **只读场景**（看帖、下视频）也被提示「检查到 AI 操作」 |
+| 2026-09-24 / 10-06 | `creator`（用户主页）模式仍失败 |
+
+**签名可以追，账号信用追不回来。** 这是「纯 HTTP 路线」与「浏览器路线」风险差异的根源。
+
+### 8.4 三条路对比
+
+| 路径 | 现在能用吗 | 稳定性 | 封号风险 | 门槛与成本 | 需登录 |
+| --- | --- | --- | --- | --- | --- |
+| **第三方 API**（rnote.dev / TikHub / Apify） | ✅ 注册即用 | 高（服务商替你跟算法） | **零**（风险在服务商侧） | `$0.01/次`，每天约 100 次 ≈ `$1` | 否（对使用者） |
+| **复用自己浏览器**（CDP / 插件 / MediaCrawler CDP 模式） | ✅ search + detail 大致可用；`creator` 脆弱 | 中：DOM 变了要自己修，但坏了看得见 | 中：**只读 + 独立小号 + 不互动**可压住 | 约 1 小时搭建 | 是（小号） |
+| **纯 HTTP 签名自建**（Spider_XHS 式） | ⚠️ 追着算法跑 | 低：坏起来是静默空数据或封号 | **高**：实测 45s 间隔、每天几十条，两三天封号 | 维护成本最高 | 是 |
+
+第三方 API 的价格口径在 `rnote.dev`（`$0.01/次`，「仅成功请求扣费」，22+ 端点含搜索 / 评论 / 二级评论）
+与 `tikhub.io`（`$0.01/请求`，明确「无需中国开发者资质」）两家独立服务商上一致，可作价格锚点。
+
+**工程上的关键差别**：走第三方 API 时签名复杂度被服务商吃掉，dig 只需把它当**普通 JSON API 源**接
+（`ext/requests` + `json.run` 就够，**不需要 Python sidecar**）；走自建才必须 sidecar（见 8.9）。
+
+### 8.5 开源项目现状（2026-10-11 读）
+
+| 项目 | 最后 push | ★ | 关键词搜索 | 形态 | 近期失效 / 封号证据 |
+| --- | --- | --- | --- | --- | --- |
+| `NanmiCoder/MediaCrawler` | 2026-10-10 | 66.6k | ✅ | Playwright / CDP + `xhshow` 签名 | 签名失效与账号异常的多条 issue；`creator` 模式 2026-09 仍坏 |
+| `xpzouying/xiaohongshu-mcp` | 2026-10-09 | 16.2k | ✅ | Go + 真实浏览器（必扫码登录） | 「仅取消收藏 + 搜索一次」次日被警告；搜索页 DOM 变动导致 60s 超时 |
+| `JoeanAmier/XHS-Downloader` | 2026-10-09 | 13.0k | ❌ 只能按链接 | 混合（API + MCP + 油猴） | 只读下载，风险最低；「从浏览器读取 Cookie」功能已失效 |
+| `cv-cat/Spider_XHS` | 2026-10-08 | 8.1k | ✅ | 纯 HTTP 逆向（Web + 创作者 + 蒲公英全套签名） | 45s 间隔仍两三天封号；机房 IP 上 cookie 直接报无效 |
+| `iFurySt/RedNote-MCP` | 2025-05-11 | 1.1k | ✅ | Go | **近一年半未维护，不要用** |
+
+GitHub 上 2026 年新出现的小红书 MCP 仓大多是 `xiaohongshu-mcp` 的复刻，无独立价值。
+
+判断「现在还能不能用」最可信的证据是 **MediaCrawler 的 commit 时间线**：2026-09-18 仍在 `fix(xhs)`，
+说明维护者还跟得上；但 issue #985（2026-09-24）与 #990（2026-10-06）显示 `creator` 模式当天仍是坏的。
+
+### 8.6 RSS 与间接路径：覆盖不了「按关键词搜笔记」
+
+- **RSSHub** 的 xiaohongshu namespace 只有 `/user/:user_id/notes|collect` 与 `/board/:board_id`，
+  `antiCrawler + requirePuppeteer`，可选 `XIAOHONGSHU_COOKIE`。**没有关键词搜索路由**——
+  只能「盯某个博主 / 某个专辑」，做不了「按词搜笔记」。
+- **搜索引擎收录差**：百度自 2024 下半年起「几乎很难找到」小红书笔记（二手来源，营销机构自测）；
+  本次 `site:xiaohongshu.com` 检索也没有返回任何笔记详情页。
+- **分享链接**：`xsec_token` 一次性且有时效，过期落到 `300031`（实测）；社区称拿 token 本身也需要登录。
+- **搬运到公众号 / 知乎**：能拿（`dig wechat` 已接），但那是别人选过的内容，不构成「按你的关键词检索小红书」。
+
+### 8.7 风险：封 IP 与封号是两件事
+
+| 风险类型 | 触发条件 | 后果 |
+| --- | --- | --- |
+| **只封 IP / 只触发验证码** | 未登录 + 高频 + 机房 / 海外 IP 直连私有 API | 换 IP 或过验证码即恢复，**账号无损** |
+| **封号 / 限制账号（不可逆）** | 用主号跑爬虫；**互动动作**（发布 / 评论 / 点赞 / 收藏）；新号或未实名；环境异常；高频 | 官方提示话术是「设备环境异常 / 可能存在多个异常账号 / 网络及手机号存在异常」 |
+
+一手证据里所有封号报告的共同点是**用主号 + 做了互动动作**；而只读 + 小号的对照组（维护者自测）能持续运行。
+注意维护者说「一年多没封号」与社区说「两三天就封」是**冲突**的，没有对照实验——但封号样本来自多人多次独立报告，
+更可信；环境差异（住宅 IP vs 机房、实名 vs 未实名、只读 vs 发布）是合理解释。
+
+### 8.8 降低风险的具体做法
+
+来自各项目 README 与维护者的实际建议，按重要性排：
+
+1. **只用独立小号**，与主号零关联（不同手机号、不同浏览器 profile、绝不互关）。
+2. **复用自己真实浏览器的登录态**（CDP / 插件 / userscript），不要 headless 全新实例——
+   MediaCrawler 默认 CDP 模式连你已有的 Chrome，并「通过 JS 表达式获取签名参数」，即不必自己实现签名。
+3. **只读**：只做搜索 + 详情 + 评论，永不点赞 / 收藏 / 评论 / 发布。
+4. **并发恒为 1**（MediaCrawler 默认 `MAX_CONCURRENCY_NUM = 1`），单次 ≤ 15-20 条
+   （`CRAWLER_MAX_NOTES_COUNT = 15`），会话间加随机秒级停顿。
+   注意「只加间隔」不够——`Spider_XHS` 用户 45s 间隔、每天几十条仍被封，**降总量与降行为相似度才是关键**。
+5. **出口 IP 固定在账号常用地**：住宅 IP，不要机房；海外场景用 `rednote.com`，别拿大陆账号在境外 IP 登录。
+6. **cookie 里的 `a1`（设备指纹，52 位）固定**，不要每次重新生成。其余字段：`web_session`（登录态）、
+   `webId` / `gid` / `websectiga` / `sec_poison_id` / `b1`；每篇笔记还需 `xsec_token`，搜索还需 `search_id`。
+
+### 8.9 若将来要接进 dig
+
+- **走第三方 API**（推荐形态）：dig 新增一个普通 JSON API 源，纯 Bash，无新语言依赖，
+  凭证沿用现有 `.env` 的 cookie 模式（形如 `XHS_API_KEY`）。签名升级与风控对抗全在服务商侧，dig 不需要跟。
+- **走自建**：只能按 `sources.md` 第 4 节第 1 条做 sidecar——本地跑一个薄 Python 服务（`xhshow` 签名），
+  dig 只 `curl http://127.0.0.1:PORT/search?q=`。签名的复杂度隔离在一个可独立升级的进程里。
+  代价：多一个常驻进程，且**要与小红书的风控持续对抗**（见 8.3 的时间线）。
+
+### 8.10 待验证项（动手前要先补的）
+
+1. **`xhshow`（2026-06-11）是否覆盖 2026-09/10 的算法升级**——没有直接证据，只能靠 MediaCrawler
+   的 commit 间接推断。这是纯 HTTP / sidecar 路线的固有维护点。
+2. **带「当日新鲜」`xsec_token` 的分享链接能否免登录读正文**——只测到过期 token → `300031`，未拿到有效 token，无法判定。
+3. **第三方 API 的实际稳定性与字段完整度**——只有服务商自述，没有独立评测。建议小额充值实测一周再决定。
+4. **MediaCrawler 的 xhs search 模式在 2026-10 是否真可用**——正面证据是 2026-09-18 还在修，
+   反面是 `creator` 模式的失败 issue；未自测（需要登录态）。
+
