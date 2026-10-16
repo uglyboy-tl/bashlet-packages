@@ -37,9 +37,7 @@ cmd_add() {
 	registry_ensure "$url" "$((ttl * 3600))" || return 1
 
 	local config_file
-	config_file="$(config.path)" || return 1
-	# readlink -f：配置常是 dotbot 软链，sed -i 会把软链替换成普通文件，先解析到真实路径再就地更新
-	config_file="$(readlink -f "$config_file")"
+	config_file="$(resolve_config_file)" || return 1
 	log.debug "本地配置: $config_file"
 
 	console.layout.section "添加包"

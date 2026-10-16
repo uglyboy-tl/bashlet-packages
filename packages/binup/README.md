@@ -1,6 +1,6 @@
 # binup
 
-命令行程序的下载管理器（v2.3.0）：从 GitHub release 检查更新、下载二进制归档、备份旧版、解压安装。
+命令行程序的下载管理器（v2.4.0）：从 GitHub release 检查更新、下载二进制归档、备份旧版、解压安装。
 安装目录优先 `/usr/local/bin`（可写时），否则 `~/.local/bin`。
 **仅支持 Linux**：包目录的资产匹配按 `{os}` 展开，registry 只收 Linux 资产；脚本本身还依赖 bash 4+（`mapfile`）与 GNU 工具（`stat -c` / `sed -i` / `readlink -f`）。
 
@@ -9,14 +9,19 @@
 ```bash
 binup search lf                 # 搜索远端包目录（-r 忽略缓存强制刷新）
 binup add uv lf                 # 从包目录添加包到本地配置（-f 覆盖已存在的配置）
-binup list                      # 列出已配置的包
-binup update                    # 检查所有已配置包的更新
+binup list                      # 列出参与更新检查的包（--all 含已禁用的）
+binup update                    # 检查更新（并发；跳过已禁用的包，--all 连它们一起查）
 binup upgrade uv                # 下载归档并按日期备份旧版
 binup install uv                # 解压并安装
+binup disable opencode          # 禁用：update 不再检查它（仍可手动 upgrade/install）
+binup enable opencode           # 重新启用
+binup remove uv                 # 从本地配置移除（--purge 连归档与备份一起删）
 binup edit                      # 编辑配置文件（$EDITOR，默认 vi）
 ```
 
 端到端：`binup search <关键词>` → `binup add <包名>` → `binup update && binup upgrade <包名> && binup install <包名>`。
+
+`update` 与 `upgrade` 默认只列**需要行动**的包（未下载 / 有新版本 / 失败），「已是最新」的包汇总到结尾一行；逐包状态与下载时间用 `binup list` 看。
 
 包目录里有哪些包、按用途怎么分：见 [`catalog.md`](catalog.md)。
 
@@ -27,7 +32,11 @@ binup edit                      # 编辑配置文件（$EDITOR，默认 vi）
 包目录默认从远端拉取（`registry_url`，缓存 `registry_ttl` 小时），可用 `BINUP_REGISTRY_URL` 覆盖成自己的源。
 本地落两份文件：`config.toml`（包声明）与 `versions.toml`（`current_version` / `latest_version` / `download_url`，由 `update` 写）。
 
-包定义字段：`repo`（唯一必需，缺了不算已注册）、`version_type`（默认 `release`）、`file_pattern`（支持 `{os}` / `{arch}` / `{libc}` 与 `*` / `?`）、`file_extension`、`binary_name`。
+包定义字段：`repo`（唯一必需，缺了不算已注册）、`version_type`（默认 `release`）、`file_pattern`（支持 `{os}` / `{arch}` / `{libc}` 与 `*` / `?`）、`file_extension`、`binary_name`、`enabled`。
+
+`enabled` 只管**要不要参加 `update` 的更新检查**，缺省即启用（老配置不用迁移），只有显式 `enabled = "false"` 才算禁用。禁用后 `update` 与不带包名的 `upgrade` 都会跳过它，但显式写包名的 `upgrade <包名>` / `install <包名>` 照常工作。改这个字段用 `binup disable <包名>` / `binup enable <包名>`，别手改也行。
+
+`remove` 只删 `config.toml` 与 `versions.toml` 里的包段，**不碰已下载的归档和已装到安装目录的二进制**；要连归档与备份一起删就加 `--purge`。
 
 `{libc}` 是 libc/ABI 风味占位符，自带前导 `-` 且整体可选，用于容忍上游按架构发不同风味（`-gnu` / `-gnueabihf` / `-musl` / `-musleabihf` / `-musleabi` / `-glibc` / `-softfloat`）或干脆不带风味。写成 `uv-{arch}-unknown-{os}{libc}` 而不是写死 `-gnu`——写死会在上游换风味时静默失效。
 
@@ -54,12 +63,13 @@ helix 只拷 `hx` 会报 `Runtime directory does not exist`（靠同级 `runtime
 | --- | --- |
 | `GITHUB_TOKEN` | GitHub API token；未设置时依次尝试 `gh auth token`、`pass "github"` |
 | `BINUP_REGISTRY_URL` | 覆盖远端包目录 URL（优先于配置） |
+| `BINUP_UPDATE_CONCURRENCY` | `update` 的并发度，默认 6（GitHub API 并发上限是 100，无需调大） |
 | `EDITOR` | `binup edit` 用的编辑器，默认 `vi` |
 
 ## 开发
 
 ```bash
-tools/test binup      # 45 条用例（test/ 下 10 个 .bats）
+tools/test binup      # 67 条用例（test/ 下 11 个 .bats）
 tools/build binup     # 产出 packages/binup/build/binup
 ```
 

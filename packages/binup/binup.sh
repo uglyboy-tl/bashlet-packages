@@ -3,7 +3,7 @@
 
 set -euo pipefail
 SCRIPT_NAME="BinUp"
-VERSION="2.3.0"
+VERSION="2.4.0"
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$PROJECT_ROOT/lib/std/import.sh"
 
@@ -26,6 +26,7 @@ import upgrade
 import install
 import search
 import add
+import manage
 import edit
 
 # 注册配置项、加载配置并设好全局设置变量（测试可单独调用，跳过 args 解析）
@@ -45,6 +46,8 @@ init_settings() {
 	config.array.register "packages" "current_version"
 	config.array.register "packages" "latest_version"
 	config.array.register "packages" "download_url"
+	# 缺省视为启用；只有显式 "false" 才算禁用（见 common.sh 的 package_is_enabled）
+	config.array.register "packages" "enabled" ""
 
 	local main_config
 	main_config=$(config.path 2> /dev/null) || main_config=""
@@ -71,6 +74,9 @@ main() {
 	args.add_subcommand "install" "安装二进制文件" "cmd_install"
 	args.add_subcommand "search" "搜索远端包目录" "cmd_search"
 	args.add_subcommand "add" "从包目录添加包到本地配置" "cmd_add"
+	args.add_subcommand "remove" "从本地配置移除包" "cmd_remove"
+	args.add_subcommand "enable" "启用包（参与 update 检查）" "cmd_enable"
+	args.add_subcommand "disable" "禁用包（不参与 update 检查）" "cmd_disable"
 	args.add_subcommand "edit" "编辑配置文件" "cmd_edit"
 
 	init_settings

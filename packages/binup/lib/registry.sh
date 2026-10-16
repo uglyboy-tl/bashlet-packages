@@ -75,7 +75,8 @@ registry_load() {
 
 # 包名白名单：远端表名会进本地 TOML 的 section 头，含引号/括号等字符会把配置写坏；
 # 点号也不行——[packages.foo.bar] 在 TOML 里是嵌套表，拆不出包名
-registry.name.valid() { [[ $1 =~ ^[A-Za-z0-9_-]+$ ]]; }
+# 规则本体在 common.sh 的 package_name_is_valid（删除 glob 也要用它挡 / 与 ..），这里只做转发
+registry.name.valid() { package_name_is_valid "$1"; }
 
 # 列出包目录中的全部包名（收包目录 URL，与其他 registry 函数一致）
 # 只认 packages.<名>.<字段> 三段键：名字不合白名单的整条丢弃，

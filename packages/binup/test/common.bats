@@ -57,3 +57,33 @@ setup() {
 	run get_default_registered_packages
 	assert_output "lf"
 }
+
+@test "common: enabled 缺省视为启用，显式 false 才算禁用" {
+	printf '\n[packages.on]\nrepo = "a/on"\n\n[packages.off]\nrepo = "a/off"\nenabled = "false"\n' >> "$_CONFIG_PATH"
+	config.load "$_CONFIG_PATH"
+
+	run package_is_enabled on
+	assert_success
+
+	run package_is_enabled off
+	assert_failure
+}
+
+@test "common: list_enabled_packages 过滤掉已禁用的包" {
+	printf '\n[packages.on]\nrepo = "a/on"\n\n[packages.off]\nrepo = "a/off"\nenabled = "false"\n' >> "$_CONFIG_PATH"
+	config.load "$_CONFIG_PATH"
+
+	run list_enabled_packages
+	assert_success
+	assert_output "on"
+}
+
+@test "common: 含路径分隔符的包名不进已注册列表" {
+	printf '\n[packages.../evil]\nrepo = "a/b"\n\n[packages.good]\nrepo = "a/good"\n' >> "$_CONFIG_PATH"
+	config.load "$_CONFIG_PATH"
+	package_reset_cache
+
+	run get_default_registered_packages
+	assert_success
+	assert_output "good"
+}
