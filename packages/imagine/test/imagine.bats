@@ -470,6 +470,7 @@ default_model = "agnes-remote"
   [[ $output == *离线模式* ]]
   [[ $output == *可用* ]]
   [[ $output == *不可用* ]]
+  [[ $output == *$'=========\n离线模式'* ]] # 表格是裸 printf，footer 前的分隔线不能丢（只判 "=========" 会被 section 自己的下划线命中）
 }
 
 @test "cli - providers --caps 只给能力明细，不再叠一遍可用性表" {
@@ -480,6 +481,7 @@ default_model = "agnes-remote"
   [[ $output == *SIZE:* ]]
   [[ $output != *DEFAULT*MODEL* ]]
   [[ $output != *不可用* ]]
+  [[ $output == *$'=========\n可用状态与凭证'* ]] # 同上：要连着 footer 文案一起判，否则 section 的下划线就能让断言恒过
 }
 
 @test "providers - 不可用的原因按状态给「下一步做什么」" {

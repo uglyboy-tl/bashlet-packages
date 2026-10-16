@@ -164,6 +164,8 @@ _providers_pad() {
 }
 
 _providers_caps() {
+	# 表格是裸 printf 渲染的，不走 item.*，需手动告知布局层「本轮有内容」，否则 footer 少一条分隔线
+	console.layout.item.raw
 	printf '  %s%s%s%s\n' "$(_providers_pad 14 "PROVIDER")" "$(_providers_pad 10 "SIZE")" \
 		"$(_providers_pad 8 "REF")" "N"
 	printf '  %s\n' "$(console.repeat "-" 33)"
@@ -234,6 +236,9 @@ cmd_providers() {
 	done < <(provider.list)
 
 	console.layout.section "Providers"
+
+	# 同上：下面的可用/不可用两个表格都是裸 printf
+	console.layout.item.raw
 
 	printf '\n可用\n'
 	if ((${#usable[@]} == 0)); then
