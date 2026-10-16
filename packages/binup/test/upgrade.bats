@@ -47,3 +47,14 @@ setup() {
 	((${#backups[@]} == 1))
 	[[ -f ${backups[0]} ]]
 }
+
+@test "upgrade: 已是最新的包不逐包展示，只在 footer 汇总" {
+	printf '\n[packages.lf]\nrepo = "gokcehan/lf"\nfile_extension = "tar.gz"\n' >> "$_CONFIG_PATH"
+	printf '\n[packages.lf]\nlatest_version = "1.0"\ncurrent_version = "1.0"\ndownload_url = "https://example.com/lf.tar.gz"\n' >> "$BATS_TEST_TMPDIR/dl/versions.toml"
+
+	run bash binup.sh upgrade
+	assert_success
+	refute_output --partial "已是最新版本"
+	assert_output --partial "1 个已是最新"
+	assert_output --partial "逐包详情"
+}

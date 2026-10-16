@@ -57,7 +57,8 @@ cmd_upgrade() {
 	local package
 
 	if ((${#target_packages[@]} == 0)); then
-		mapfile -t packages_to_upgrade < <(get_default_registered_packages)
+		# 不带包名时只处理启用的包；显式指定的包不受 enabled 影响
+		mapfile -t packages_to_upgrade < <(list_enabled_packages)
 	else
 		for package in "${target_packages[@]}"; do
 			is_package_in_default_config_with_repo "$package" || {
@@ -69,7 +70,7 @@ cmd_upgrade() {
 		done
 	fi
 
-	local packages_skipped=0 packages_failed=0 packages_updated=0
+	local packages_skipped=0 packages_failed=0 packages_updated=0 packages_unknown=0
 	local file_extension current_version latest_version download_url filename output_file old_file
 	console.layout.section "下载更新"
 
@@ -81,10 +82,12 @@ cmd_upgrade() {
 
 		[[ -n $latest_version ]] || {
 			console.layout.item.title 1 "$package: 没有云端信息，请先运行 \`$_USAGE_SCRIPT_FILENAME update\`"
+			((packages_unknown++)) || true
 			continue
 		}
 		[[ -n $download_url ]] || {
 			console.layout.item.title 1 "$package: 没有下载链接，请先运行 \`$_USAGE_SCRIPT_FILENAME update\`"
+			((packages_unknown++)) || true
 			continue
 		}
 
@@ -93,7 +96,7 @@ cmd_upgrade() {
 		elif [[ $current_version != "$latest_version" ]]; then
 			console.layout.item.title 1 "$package: 有新版本 $current_version $POWERLINE_POINTING_ARROW $latest_version"
 		else
-			console.layout.item.title 1 "$package: 已是最新版本 $current_version"
+			# 「已是最新」不逐包展示：绝大多数包都在这个分支，汇总到 footer 一行
 			((packages_skipped++)) || true
 			continue
 		fi
@@ -120,9 +123,13 @@ cmd_upgrade() {
 
 	local total=${#packages_to_upgrade[@]}
 	if ((total > 0)); then
-		local summary="共 $total 个包，$packages_updated 个已更新，$packages_skipped 个跳过"
+		local summary="共 $total 个包：$packages_updated 个已更新，$packages_skipped 个已是最新"
+		((packages_unknown > 0)) && summary+="，$packages_unknown 个需先 update"
 		((packages_failed > 0)) && summary+="，$packages_failed 个失败"
 		console.layout.footer "$summary"
+		((packages_skipped > 0)) && console.stdout "逐包详情: \`$_USAGE_SCRIPT_FILENAME list\`"
+	else
+		console.layout.footer "没有需要升级的包"
 	fi
 
 	((packages_failed == 0))
