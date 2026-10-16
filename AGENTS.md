@@ -22,6 +22,7 @@ BashDev/
 │   │   ├── lib/          # core/std/ext 链接（不入库）+ 包私有模块（import <模块名>）
 │   │   ├── test/         # *.bats + bats/test_helper 链接（不入库）
 │   │   ├── build/        # 构建产物（根 .gitignore 忽略）
+│   │   ├── scripts/      # 维护者跑的辅助脚本（不参与构建，如 binup/scripts/binup-check.sh）
 │   │   └── ...           # 包自己的资源（如 binup/registry.toml）
 │   └── archive/        # 存档包，只保留历史代码
 ├── lib/                # → bashlet/lib：框架工具链的接口（见下）
@@ -50,6 +51,7 @@ BashDev/
 - **资源与产物**：包自己的数据/模板放包根（如 `binup/registry.toml`）；构建产物落 `OUTPUT_DIR`（环境变量 > 包内本地环境文件 > 包内 `build/`）。
 - **忽略规则**：共通项（`build/`、`.env`）写在根 `.gitignore`；包内链接用 `packages/*/…` 逐项通配。包内 `.gitignore` 只放该包特有的东西（如 binup 的 `/downloads`）。
 - **测试**：与模块同名（`lib/registry.sh` → `test/registry.bats`）；存档包不计入全量测试。
+- **辅助脚本**：放包内 `scripts/`，是给维护者跑的工具（不是包功能的一部分）；`tools/build` 不认它、不分发，只由 lint 命令扫。
 - **每个包的 `test/` 下都有 `setup.bash`**：bats 文件只 `load 'test_helper/common-setup'`、`load 'setup.bash'`，
   `setup()` 里调它暴露的 `_<包>_setup`；只有单个 .bats 的包（imagine、apthist）也建，保持结构一致。
 - **测试里加载代码必须走 `_fast_load`**：bats 开着 functrace + DEBUG trap，直接 `source`/`import` 会让每条命令过一遍 trap，
@@ -138,12 +140,12 @@ tmux new -d -s regress 'tools/test > /tmp/regress.log 2>&1; echo "rc=$?" >> /tmp
 # 改动不涉及 bashlet 时，不必回归 bashlet 测试集；涉及框架模块或 tools/build 才需要
 cd bashlet && tools/test -x requests
 
-# 检查和格式化（既有告警不清零：archive/agent.sh 的 POSIX sh 用法、imagine/lib 的几处 SC2086/SC2153）
+# 检查和格式化（既有告警不清零：archive/agent.sh 的 POSIX sh 用法、imagine/{lib,scripts} 的几处 SC2086/SC2153）
 # 包内嵌套模块（lib/sources/、lib/providers/）不在 packages/*/lib/*.sh 里；用 find 取，
 # 顺带避开 core/std/ext 这些指向 bashlet 的符号链接（find 默认不进符号链接目录）
 libs=$(find packages/*/lib -mindepth 2 -maxdepth 2 -name '*.sh' -not -path '*/core/*' -not -path '*/std/*' -not -path '*/ext/*')
-shellcheck packages/*/*.sh packages/*/lib/*.sh $libs tools/*.sh tools/install tools/test tools/build tools/new
-shfmt -sr -s -ci -w packages/*/*.sh packages/*/lib/*.sh $libs tools/*.sh tools/install tools/test tools/build tools/new
+shellcheck packages/*/*.sh packages/*/lib/*.sh packages/*/scripts/*.sh $libs tools/*.sh tools/install tools/test tools/build tools/new
+shfmt -sr -s -ci -w packages/*/*.sh packages/*/lib/*.sh packages/*/scripts/*.sh $libs tools/*.sh tools/install tools/test tools/build tools/new
 
 # 构建（默认落在 packages/<包名>/build/<包名>；设了 OUTPUT_DIR 则落到那里）
 tools/build binup
