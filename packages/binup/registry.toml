@@ -11,54 +11,24 @@
 #   binup add <包名>           # 把定义写进本地配置
 #   binup update && binup upgrade <包名> && binup install <包名>
 
-[packages.opencode]
-repo = "anomalyco/opencode"
-file_pattern = "opencode-{os}-{arch}"
-file_extension = "tar.gz"
-description = "开源 AI 编码代理"
+[packages.abtop]
+repo = "graykode/abtop"
+file_pattern = "abtop-{arch}-unknown-{os}{libc}"
+file_extension = "tar.xz"
+description = "像 top 一样监控 AI agent 的 token / 上下文 / 限流"
 
-[packages.uv]
-repo = "astral-sh/uv"
-file_pattern = "uv-{arch}-unknown-{os}{libc}"
+[packages.age]
+repo = "FiloSottile/age"
+file_pattern = "age-v*-{os}-{arch}"
 file_extension = "tar.gz"
-description = "极快的 Python 包与项目管理器（Rust）"
+description = "现代简洁的文件加密工具（X25519 + ChaCha20-Poly1305）"
 
-[packages.bun]
-repo = "oven-sh/bun"
-file_pattern = "bun-{os}-{arch}"
+[packages.ast-grep]
+repo = "ast-grep/ast-grep"
+file_pattern = "app-{arch}-unknown-{os}{libc}"
 file_extension = "zip"
-description = "一体化 JavaScript 运行时 / 打包器 / 测试器 / 包管理器"
-
-[packages.rtk]
-repo = "rtk-ai/rtk"
-file_pattern = "rtk-{arch}-unknown-{os}{libc}"
-file_extension = "tar.gz"
-description = "CLI 代理：把常见开发命令的 LLM token 消耗降低 60-90%"
-
-[packages.lf]
-repo = "gokcehan/lf"
-file_pattern = "lf-{os}-{arch}"
-file_extension = "tar.gz"
-description = "终端文件管理器"
-
-[packages.yq]
-repo = "mikefarah/yq"
-file_pattern = "yq_{os}_{arch}"
-file_extension = "tar.gz"
-binary_name = "yq"
-description = "YAML / JSON / XML / CSV / TOML / HCL 命令行处理器"
-
-[packages.chsrc]
-repo = "RubyMetric/chsrc"
-file_pattern = "chsrc-{arch}-{os}"
-binary_name = "chsrc"
-description = "全平台通用换源工具与框架"
-
-[packages.sonar]
-repo = "raskrebs/sonar"
-file_pattern = "sonar_{os}_{arch}"
-file_extension = "tar.gz"
-description = "查看和管理本机监听端口的 CLI 工具"
+binary_name = "ast-grep"
+description = "基于语法树的搜索与重写（上游同包还带 sg 别名，只装 ast-grep）"
 
 [packages.atuin]
 repo = "atuinsh/atuin"
@@ -66,11 +36,23 @@ file_pattern = "atuin-{arch}-unknown-{os}{libc}"
 file_extension = "tar.gz"
 description = "跨 shell 的命令历史管理，可选同步与加密"
 
+[packages.bandwhich]
+repo = "imsnif/bandwhich"
+file_pattern = "bandwhich-v*-{arch}-unknown-{os}{libc}"
+file_extension = "tar.gz"
+description = "按进程 / 连接实时查看网络带宽占用"
+
 [packages.bat]
 repo = "sharkdp/bat"
 file_pattern = "bat-v*-{arch}-unknown-{os}{libc}"
 file_extension = "tar.gz"
 description = "带语法高亮的 cat 替代"
+
+[packages.bd]
+repo = "gastownhall/beads"
+file_pattern = "beads_*_{os}_{arch}"
+file_extension = "tar.gz"
+description = "给 AI 编码 agent 用的 Git 持久化记忆 / 任务 CLI"
 
 [packages.bottom]
 repo = "ClementTsang/bottom"
@@ -84,11 +66,91 @@ file_pattern = "btop-{arch}-unknown-{os}{libc}"
 file_extension = "tar.gz"
 description = "资源监控器（CPU / 内存 / 磁盘 / 网络）"
 
+[packages.bun]
+repo = "oven-sh/bun"
+file_pattern = "bun-{os}-{arch}"
+file_extension = "zip"
+description = "一体化 JavaScript 运行时 / 打包器 / 测试器 / 包管理器"
+
+[packages.chsrc]
+repo = "RubyMetric/chsrc"
+file_pattern = "chsrc-{arch}-{os}"
+binary_name = "chsrc"
+description = "全平台通用换源工具与框架"
+
+[packages.claude]
+repo = "anthropics/claude-code"
+file_pattern = "claude-{os}-{arch}"
+file_extension = "tar.gz"
+description = "Anthropic 官方终端 AI 编码助手"
+
+[packages.cosign]
+repo = "sigstore/cosign"
+file_pattern = "cosign-{os}-{arch}"
+binary_name = "cosign"
+description = "签名与验证容器镜像 / 构建产物"
+
+[packages.czkawka]
+repo = "qarmin/czkawka"
+file_pattern = "{os}_czkawka_cli_{arch}"
+binary_name = "czkawka"
+description = "查找并清理重复文件、空文件夹、相似图片（CLI 版）"
+
+[packages.dasel]
+repo = "tomwright/dasel"
+file_pattern = "dasel_{os}_{arch}"
+binary_name = "dasel"
+description = "用同一套语法选择 / 修改 JSON / YAML / TOML / XML / CSV"
+
+[packages.deckcraft]
+repo = "storytold/deckcraft"
+file_pattern = "deckcraft-*-{os}-{arch}"
+file_extension = "tar.gz"
+binary_name = "deckcraft-cli"
+description = "PowerPoint 演示文稿（pptx）的信息读取 / 幻灯片渲染成图 / 格式转换 CLI（上游同包还带 GUI，只装 CLI）"
+
 [packages.delta]
 repo = "dandavison/delta"
 file_pattern = "delta-*-{arch}-unknown-{os}{libc}"
 file_extension = "tar.gz"
 description = "git diff 的语法高亮分页器（Debian 同名 delta 包是另一个无关工具）"
+
+[packages.difftastic]
+repo = "Wilfred/difftastic"
+file_pattern = "difft-*-{arch}-unknown-{os}{libc}"
+file_extension = "tar.gz"
+description = "理解语法的结构化 diff 工具（difft）"
+
+[packages.direnv]
+repo = "direnv/direnv"
+file_pattern = "direnv.{os}-{arch}"
+binary_name = "direnv"
+description = "按目录自动加载 / 卸载环境变量"
+
+[packages.doggo]
+repo = "mr-karan/doggo"
+file_pattern = "doggo-{os}-{arch}"
+file_extension = "tar.gz"
+description = "彩色高亮的命令行 DNS 查询客户端（DoH / DoT）"
+
+[packages.dprint]
+repo = "dprint/dprint"
+file_pattern = "dprint-{arch}-unknown-{os}{libc}"
+file_extension = "zip"
+description = "可插拔的多语言代码格式化平台"
+
+[packages.duckdb]
+repo = "duckdb/duckdb"
+file_pattern = "duckdb_cli-{os}-{arch}"
+file_extension = "gz"
+binary_name = "duckdb"
+description = "嵌入式分析型数据库的 SQL 命令行，可直接查 CSV / Parquet"
+
+[packages.duf]
+repo = "muesli/duf"
+file_pattern = "duf_*_{os}_{arch}"
+file_extension = "tar.gz"
+description = "df 的现代化替代，磁盘空间与文件系统速查"
 
 [packages.dust]
 repo = "bootandy/dust"
@@ -114,6 +176,12 @@ file_pattern = "fd-v*-{arch}-unknown-{os}{libc}"
 file_extension = "tar.gz"
 description = "更快的 find 替代"
 
+[packages.fq]
+repo = "wader/fq"
+file_pattern = "fq_*_{os}_{arch}"
+file_extension = "tar.gz"
+description = "二进制格式的 jq，用于二进制与文本格式的解析"
+
 [packages.frp]
 repo = "fatedier/frp"
 file_pattern = "frp_*_{os}_{arch}"
@@ -126,11 +194,41 @@ file_pattern = "fzf-*-{os}_{arch}"
 file_extension = "tar.gz"
 description = "命令行模糊查找器"
 
+[packages.gdu]
+repo = "dundee/gdu"
+file_pattern = "gdu_{os}_{arch}"
+file_extension = "tgz"
+description = "磁盘占用分析器（TUI / 非交互 / 导出三模式）"
+
 [packages.gh]
 repo = "cli/cli"
 file_pattern = "gh_*_{os}_{arch}"
 file_extension = "tar.gz"
 description = "GitHub 官方命令行客户端"
+
+[packages.ghq]
+repo = "x-motemen/ghq"
+file_pattern = "ghq_{os}_{arch}"
+file_extension = "zip"
+description = "远程仓库按域与路径归置管理"
+
+[packages.git-cliff]
+repo = "orhun/git-cliff"
+file_pattern = "git-cliff-*-{arch}-unknown-{os}{libc}"
+file_extension = "tar.gz"
+description = "按自定义模板从 Git 历史生成 Changelog"
+
+[packages.git-who]
+repo = "sinclairtarget/git-who"
+file_pattern = "gitwho_v*_{os}_{arch}"
+file_extension = "tar.gz"
+description = "按目录维度统计 git 各贡献者的提交与改动量"
+
+[packages.gitleaks]
+repo = "gitleaks/gitleaks"
+file_pattern = "gitleaks_*_{os}_{arch}"
+file_extension = "tar.gz"
+description = "检出并防止仓库中硬编码的密钥"
 
 [packages.gitui]
 repo = "gitui-org/gitui"
@@ -143,6 +241,19 @@ repo = "charmbracelet/glow"
 file_pattern = "glow_*_{os}_{arch}"
 file_extension = "tar.gz"
 description = "终端 Markdown 渲染与阅读器"
+
+[packages.gping]
+repo = "orf/gping"
+file_pattern = "gping-Linux{libc}-{arch}"
+file_extension = "tar.gz"
+description = "折线图实时展示 ping 延迟"
+
+[packages.gridcraft]
+repo = "storytold/gridcraft"
+file_pattern = "gridcraft-*-{os}-{arch}"
+file_extension = "tar.gz"
+binary_name = "gridcraft-cli"
+description = "Excel 电子表格（xlsx）的读表 / 算公式 / 转格式 CLI（上游同包还带 GUI，只装 CLI）"
 
 [packages.gum]
 repo = "charmbracelet/gum"
@@ -168,17 +279,41 @@ file_pattern = "hugo_extended_*_{os}-{arch}"
 file_extension = "tar.gz"
 description = "静态网站生成器（扩展版，支持 SCSS / WebP，多数主题需要）"
 
+[packages.hurl]
+repo = "Orange-OpenSource/hurl"
+file_pattern = "hurl-*-{arch}-unknown-{os}{libc}"
+file_extension = "tar.gz"
+description = "用纯文本描述并校验 HTTP 请求"
+
 [packages.hyperfine]
 repo = "sharkdp/hyperfine"
 file_pattern = "hyperfine-v*-{arch}-unknown-{os}{libc}"
 file_extension = "tar.gz"
 description = "命令行基准测试工具"
 
+[packages.jc]
+repo = "kellyjonbrazil/jc"
+file_pattern = "jc-*-{os}-{arch}"
+file_extension = "tar.gz"
+description = "把常见命令的输出转成 JSON / YAML"
+
+[packages.jq]
+repo = "jqlang/jq"
+file_pattern = "jq-{os}-{arch}"
+binary_name = "jq"
+description = "命令行 JSON 处理器（事实标准）"
+
 [packages.just]
 repo = "casey/just"
 file_pattern = "just-*-{arch}-unknown-{os}{libc}"
 file_extension = "tar.gz"
 description = "命令运行器（Makefile 替代）"
+
+[packages.kopia]
+repo = "kopia/kopia"
+file_pattern = "kopia-*-{os}-{arch}"
+file_extension = "tar.gz"
+description = "增量加密去重备份（本地 / S3 / B2 / SFTP 等后端）"
 
 [packages.lazydocker]
 repo = "jesseduffield/lazydocker"
@@ -192,6 +327,24 @@ file_pattern = "lazygit_*_{os}_{arch}"
 file_extension = "tar.gz"
 description = "git 的终端 UI"
 
+[packages.lefthook]
+repo = "evilmartians/lefthook"
+file_pattern = "lefthook_*_Linux_{arch}"
+binary_name = "lefthook"
+description = "快速的 Git hooks 管理器"
+
+[packages.lf]
+repo = "gokcehan/lf"
+file_pattern = "lf-{os}-{arch}"
+file_extension = "tar.gz"
+description = "终端文件管理器"
+
+[packages.lightpanda]
+repo = "lightpanda-io/browser"
+file_pattern = "lightpanda-{arch}-{os}"
+binary_name = "lightpanda"
+description = "启动极快、内存友好的无头浏览器"
+
 [packages.llmfit]
 repo = "AlexsJones/llmfit"
 file_pattern = "llmfit-v*-{arch}-unknown-{os}{libc}"
@@ -199,11 +352,35 @@ file_extension = "tar.gz"
 binary_name = "llmfit"
 description = "按本机硬件筛选能跑的模型"
 
+[packages.lnav]
+repo = "tstack/lnav"
+file_pattern = "lnav-*-{os}{libc}-{arch}"
+file_extension = "zip"
+description = "免配置的终端日志查看器，支持 SQL 与正则过滤"
+
 [packages.mc]
 repo = "minio/mc"
 file_pattern = "mc.{os}-{arch}.*"
 binary_name = "mc"
 description = "MinIO / S3 兼容对象存储的客户端（上游仓库已归档，不会再更新）"
+
+[packages.miller]
+repo = "johnkerl/miller"
+file_pattern = "miller-*-{os}-{arch}"
+file_extension = "tar.gz"
+description = "CSV / TSV / JSON 的 awk-sed-cut-join"
+
+[packages.nbping]
+repo = "hanshuaikang/NBping"
+file_pattern = "nbping-{arch}-unknown-{os}{libc}"
+file_extension = "tar.gz"
+description = "多目标并发 ping，表格 / 折线可视化延迟与丢包"
+
+[packages.ntr]
+repo = "nxtrace/NTrace-core"
+file_pattern = "ntr_{os}_{arch}"
+binary_name = "ntr"
+description = "路由跟踪，显示途经 IP、归属地与耗时"
 
 [packages.officecli]
 repo = "iOfficeAI/OfficeCLI"
@@ -217,11 +394,35 @@ file_pattern = "posh-{os}-{arch}"
 binary_name = "oh-my-posh"
 description = "可定制的 shell 提示符引擎"
 
+[packages.omp]
+repo = "can1357/oh-my-pi"
+file_pattern = "omp-{os}-{arch}"
+binary_name = "omp"
+description = "终端 AI 编码 agent（集成 LSP / 调试器）"
+
+[packages.opencode]
+repo = "anomalyco/opencode"
+file_pattern = "opencode-{os}-{arch}"
+file_extension = "tar.gz"
+description = "开源 AI 编码代理"
+
+[packages.pandoc]
+repo = "jgm/pandoc"
+file_pattern = "pandoc-*-{os}-{arch}"
+file_extension = "tar.gz"
+description = "通用标记语言 / 文档格式互转"
+
 [packages.procs]
 repo = "dalance/procs"
 file_pattern = "procs-v*-{arch}-{os}"
 file_extension = "zip"
 description = "现代 ps 替代（Rust）"
+
+[packages.q]
+repo = "natesales/q"
+file_pattern = "q_*_{os}_{arch}"
+file_extension = "tar.gz"
+description = "小型 DNS 客户端，支持 UDP / TCP / DoT / DoH / DoQ / ODoH"
 
 [packages.rclone]
 repo = "rclone/rclone"
@@ -242,6 +443,12 @@ file_pattern = "ripgrep-*-{arch}-unknown-{os}{libc}"
 file_extension = "tar.gz"
 description = "递归搜索工具（rg），grep 的更快替代"
 
+[packages.rtk]
+repo = "rtk-ai/rtk"
+file_pattern = "rtk-{arch}-unknown-{os}{libc}"
+file_extension = "tar.gz"
+description = "CLI 代理：把常见开发命令的 LLM token 消耗降低 60-90%"
+
 [packages.ruff]
 repo = "astral-sh/ruff"
 file_pattern = "ruff-{arch}-unknown-{os}{libc}"
@@ -253,6 +460,12 @@ repo = "chmln/sd"
 file_pattern = "sd-v*-{arch}-unknown-{os}{libc}"
 file_extension = "tar.gz"
 description = "更直观的 sed 替代"
+
+[packages.shellcheck]
+repo = "koalaman/shellcheck"
+file_pattern = "shellcheck-v*.{os}.{arch}"
+file_extension = "tar.gz"
+description = "shell 脚本静态分析工具"
 
 [packages.shfmt]
 repo = "mvdan/sh"
@@ -266,11 +479,53 @@ file_pattern = "sing-box-*-{os}-{arch}"
 file_extension = "tar.gz"
 description = "通用代理平台"
 
+[packages.snitch]
+repo = "karol-broda/snitch"
+file_pattern = "snitch_*_{os}_{arch}"
+file_extension = "tar.gz"
+description = "ss / netstat 替代的 TCP / UDP 连接查看器（TUI）"
+
+[packages.sonar]
+repo = "raskrebs/sonar"
+file_pattern = "sonar_{os}_{arch}"
+file_extension = "tar.gz"
+description = "查看和管理本机监听端口的 CLI 工具"
+
+[packages.sq]
+repo = "neilotoole/sq"
+file_pattern = "sq-*-{os}-{arch}"
+file_extension = "tar.gz"
+description = "用 SQL 查数据库与文档（jq 风格的数据源查询）"
+
 [packages.starship]
 repo = "starship/starship"
 file_pattern = "starship-{arch}-unknown-{os}{libc}"
 file_extension = "tar.gz"
 description = "跨 shell 的极快提示符"
+
+[packages.trippy]
+repo = "fujiapple852/trippy"
+file_pattern = "trippy-*-{arch}-unknown-{os}{libc}"
+file_extension = "tar.gz"
+description = "traceroute + ping 结合的网络诊断（TUI）"
+
+[packages.typst]
+repo = "typst/typst"
+file_pattern = "typst-{arch}-unknown-{os}{libc}"
+file_extension = "tar.xz"
+description = "类 LaTeX 的标记语言排版编译器，产出 PDF"
+
+[packages.usql]
+repo = "xo/usql"
+file_pattern = "usql-*-{os}-{arch}"
+file_extension = "tar.bz2"
+description = "通用 SQL 数据库命令行（PostgreSQL / MySQL / SQLite / Oracle 等）"
+
+[packages.uv]
+repo = "astral-sh/uv"
+file_pattern = "uv-{arch}-unknown-{os}{libc}"
+file_extension = "tar.gz"
+description = "极快的 Python 包与项目管理器（Rust）"
 
 [packages.witr]
 repo = "pranshuparmar/witr"
@@ -285,6 +540,12 @@ file_extension = "tar.gz"
 binary_name = "wordcraft-cli"
 description = "Word 文档转换与检查 CLI（docx / pdf / odt / md / tex 互转；上游同包还带 GUI，只装 CLI）"
 
+[packages.xan]
+repo = "medialab/xan"
+file_pattern = "xan-{arch}-unknown-{os}{libc}"
+file_extension = "tar.gz"
+description = "处理 GB 级 CSV 的终端数据工具"
+
 [packages.xh]
 repo = "ducaale/xh"
 file_pattern = "xh-v*-{arch}-unknown-{os}{libc}"
@@ -296,6 +557,13 @@ repo = "sxyazi/yazi"
 file_pattern = "yazi-{arch}-unknown-{os}{libc}"
 file_extension = "zip"
 description = "极快的终端文件管理器（Rust）"
+
+[packages.yq]
+repo = "mikefarah/yq"
+file_pattern = "yq_{os}_{arch}"
+file_extension = "tar.gz"
+binary_name = "yq"
+description = "YAML / JSON / XML / CSV / TOML / HCL 命令行处理器"
 
 [packages.zellij]
 repo = "zellij-org/zellij"
