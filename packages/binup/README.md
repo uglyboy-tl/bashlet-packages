@@ -23,7 +23,8 @@ binup edit                      # 编辑配置文件（$EDITOR，默认 vi）
 
 `update` 与 `upgrade` 默认只列**需要行动**的包（未下载 / 有新版本 / 失败），「已是最新」的包汇总到结尾一行；逐包状态与下载时间用 `binup list` 看。
 
-包目录里有哪些包、按用途怎么分：见 [`catalog.md`](catalog.md)。
+包目录里有哪些包、按用途怎么分：见 [`docs/catalog.md`](docs/catalog.md)；
+怎么扩充这个目录、哪些文件进仓库：见 [`docs/maintaining.md`](docs/maintaining.md)。
 
 步骤分开是为了让你在 `update` 与 `upgrade` 之间看到版本变化，并在 `install` 前拿到归档（`download_dir`，默认为包内 `downloads/`）。
 
@@ -33,6 +34,7 @@ binup edit                      # 编辑配置文件（$EDITOR，默认 vi）
 本地落两份文件：`config.toml`（包声明）与 `versions.toml`（`current_version` / `latest_version` / `download_url`，由 `update` 写）。
 
 包定义字段：`repo`（唯一必需，缺了不算已注册）、`version_type`（默认 `release`）、`file_pattern`（支持 `{os}` / `{arch}` / `{libc}` 与 `*` / `?`）、`file_extension`、`binary_name`、`enabled`。
+`file_extension`（`tar.gz` / `zip` / `gz` 等）由 binup 自己拼进匹配正则，所以 `file_pattern` 里**不要再写一遍扩展名**：写成 `fq_*_{os}_{arch}` + `file_extension = "tar.gz"`，不要写 `fq_*_{os}_{arch}.tar.gz`（后缀叠加后一个资产也匹配不到）。
 
 `enabled` 只管**要不要参加 `update` 的更新检查**，缺省即启用（老配置不用迁移），只有显式 `enabled = "false"` 才算禁用。禁用后 `update` 与不带包名的 `upgrade` 都会跳过它，但显式写包名的 `upgrade <包名>` / `install <包名>` 照常工作。改这个字段用 `binup disable <包名>` / `binup enable <包名>`，别手改也行。
 
