@@ -126,7 +126,9 @@ cmd_remove() {
 			((failures++)) || true
 			continue
 		fi
-		config.persist.remove_section "packages.$package" "$VERSIONS_FILE"
+		# versions.toml 清理失败不该中断整批 remove：主配置已经删了，这里降级为告警继续处理后面的包
+		config.persist.remove_section "packages.$package" "$VERSIONS_FILE" ||
+			log.warn "$package: 版本记录清理失败（$VERSIONS_FILE）"
 
 		if [[ $purge == true ]]; then
 			# 归档按 <包名>-<版本>.<扩展名> 命名，连字符保证不误伤同前缀的包（uv 不会命中 uvx-*）

@@ -71,7 +71,7 @@ helix 只拷 `hx` 会报 `Runtime directory does not exist`（靠同级 `runtime
 ## 开发
 
 ```bash
-tools/test binup      # 67 条用例（test/ 下 11 个 .bats）
+tools/test binup      # 68 条用例（test/ 下 11 个 .bats）
 tools/build binup     # 产出 packages/binup/build/binup
 ```
 

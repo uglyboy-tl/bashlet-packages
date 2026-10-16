@@ -7,6 +7,11 @@ setup() {
 	_binup_setup
 }
 
+teardown() {
+	# 只读目录的用例会把 dl/ 设成不可写，恢复以免 BATS_TEST_TMPDIR 清理失败
+	chmod 700 "$BATS_TEST_TMPDIR/dl" 2> /dev/null || true
+}
+
 _binup_add_local() {
 	local name="$1" extra="${2:-}"
 	printf '\n[packages.%s]\nrepo = "owner/%s"\n%s\n' "$name" "$name" "$extra" >> "$_CONFIG_PATH"
@@ -111,4 +116,21 @@ _binup_add_local() {
 	[[ ! -f "$BATS_TEST_TMPDIR/dl/uv-1.0.tar.gz" ]]
 	[[ ! -f "$BATS_TEST_TMPDIR/dl/backups/uv-0.9-2024.01.01.tar.gz" ]]
 	[[ -f "$BATS_TEST_TMPDIR/dl/uvx-1.0.tar.gz" ]]
+}
+
+@test "remove: versions.toml 清理失败时降级为告警，不中断整批" {
+	_binup_add_local lf
+	_binup_add_local uv
+	printf '[packages.lf]\nlatest_version = "1.0"\n' >> "$BATS_TEST_TMPDIR/dl/versions.toml"
+	chmod 500 "$BATS_TEST_TMPDIR/dl" # 目录不可写 → remove_section 写临时文件失败
+
+	run bash binup.sh remove lf uv
+	assert_success
+	assert_output --partial "版本记录清理失败"
+	# 两个包都要被处理完，不能因为第一次清理失败就退出
+	assert_output --partial "共 2 个包，2 个已移除"
+
+	# grep -c 无匹配时退出码为 1，这里只关心计数结果
+	run grep -c '^\[packages\.' "$_CONFIG_PATH"
+	assert_output "0"
 }
